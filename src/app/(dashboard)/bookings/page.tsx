@@ -37,7 +37,7 @@ async function getBookings(filter: string) {
   }
 
   query += ' ORDER BY b.created_at DESC LIMIT 50';
-  const [rows] = await pool.execute(query);
+  const { rows } = await pool.query(query);
   return rows as Array<Record<string, unknown>>;
 }
 

@@ -1,18 +1,6 @@
 import db from "@/lib/db";
 import TopBar from "@/components/TopBar";
 
-interface StatRow {
-  total: number;
-}
-
-interface RevenueRow {
-  total: number;
-}
-
-interface BookingCountRow {
-  total: number;
-}
-
 export default async function DashboardPage() {
   let totalRooms = 0;
   let availableRooms = 0;
@@ -31,66 +19,66 @@ export default async function DashboardPage() {
   let openIncidents = 0;
 
   try {
-    let r = await db.query("SELECT COUNT(*) as total FROM rooms") as [StatRow[], unknown];
-    totalRooms = r[0][0]?.total ?? 0;
+    let r = await db.query("SELECT COUNT(*) as total FROM rooms");
+    totalRooms = Number(r.rows[0]?.total ?? 0);
 
-    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'available'") as [StatRow[], unknown];
-    availableRooms = r[0][0]?.total ?? 0;
+    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'available'");
+    availableRooms = Number(r.rows[0]?.total ?? 0);
 
-    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'occupied'") as [StatRow[], unknown];
-    occupiedRooms = r[0][0]?.total ?? 0;
+    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'occupied'");
+    occupiedRooms = Number(r.rows[0]?.total ?? 0);
 
-    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'cleaning'") as [StatRow[], unknown];
-    cleaningRooms = r[0][0]?.total ?? 0;
+    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'cleaning'");
+    cleaningRooms = Number(r.rows[0]?.total ?? 0);
 
-    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'out_of_service'") as [StatRow[], unknown];
-    outOfServiceRooms = r[0][0]?.total ?? 0;
-
-    r = await db.query(
-      "SELECT COUNT(*) as total FROM bookings WHERE check_in_date = CURDATE() AND status IN ('confirmed','checked_in')"
-    ) as [BookingCountRow[], unknown];
-    todayCheckins = r[0][0]?.total ?? 0;
+    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'out_of_service'");
+    outOfServiceRooms = Number(r.rows[0]?.total ?? 0);
 
     r = await db.query(
-      "SELECT COUNT(*) as total FROM bookings WHERE check_out_date = CURDATE() AND status = 'checked_in'"
-    ) as [BookingCountRow[], unknown];
-    todayCheckouts = r[0][0]?.total ?? 0;
+      "SELECT COUNT(*) as total FROM bookings WHERE check_in_date = CURRENT_DATE AND status IN ('confirmed','checked_in')"
+    );
+    todayCheckins = Number(r.rows[0]?.total ?? 0);
 
     r = await db.query(
-      "SELECT COALESCE(SUM(amount),0) as total FROM financial_transactions WHERE type='income' AND transaction_date = CURDATE()"
-    ) as [RevenueRow[], unknown];
-    todayRevenue = Number(r[0][0]?.total ?? 0);
+      "SELECT COUNT(*) as total FROM bookings WHERE check_out_date = CURRENT_DATE AND status = 'checked_in'"
+    );
+    todayCheckouts = Number(r.rows[0]?.total ?? 0);
 
     r = await db.query(
-      "SELECT COALESCE(SUM(amount),0) as total FROM financial_transactions WHERE type='income' AND MONTH(transaction_date) = MONTH(CURDATE()) AND YEAR(transaction_date) = YEAR(CURDATE())"
-    ) as [RevenueRow[], unknown];
-    monthRevenue = Number(r[0][0]?.total ?? 0);
+      "SELECT COALESCE(SUM(amount),0) as total FROM financial_transactions WHERE type='income' AND transaction_date = CURRENT_DATE"
+    );
+    todayRevenue = Number(r.rows[0]?.total ?? 0);
+
+    r = await db.query(
+      "SELECT COALESCE(SUM(amount),0) as total FROM financial_transactions WHERE type='income' AND EXTRACT(MONTH FROM transaction_date) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM transaction_date) = EXTRACT(YEAR FROM CURRENT_DATE)"
+    );
+    monthRevenue = Number(r.rows[0]?.total ?? 0);
 
     r = await db.query(
       "SELECT COUNT(*) as total FROM bookings WHERE status IN ('confirmed','checked_in')"
-    ) as [BookingCountRow[], unknown];
-    activeBookings = r[0][0]?.total ?? 0;
+    );
+    activeBookings = Number(r.rows[0]?.total ?? 0);
 
     r = await db.query(
       "SELECT COUNT(*) as total FROM inventory_items WHERE quantity_in_stock <= reorder_level AND status = 'active'"
-    ) as [BookingCountRow[], unknown];
-    lowStock = r[0][0]?.total ?? 0;
+    );
+    lowStock = Number(r.rows[0]?.total ?? 0);
 
     r = await db.query(
-      "SELECT COUNT(DISTINCT b.id) as total FROM bookings b WHERE b.status = 'checked_in' AND b.check_in_date <= CURDATE() AND b.check_out_date >= CURDATE()"
-    ) as [BookingCountRow[], unknown];
-    activeGuests = r[0][0]?.total ?? 0;
+      "SELECT COUNT(DISTINCT b.id) as total FROM bookings b WHERE b.status = 'checked_in' AND b.check_in_date <= CURRENT_DATE AND b.check_out_date >= CURRENT_DATE"
+    );
+    activeGuests = Number(r.rows[0]?.total ?? 0);
 
     r = await db.query(
       "SELECT COUNT(*) as total FROM financial_transactions WHERE type = 'income' AND status = 'pending'"
-    ) as [BookingCountRow[], unknown];
-    pendingPayments = r[0][0]?.total ?? 0;
+    );
+    pendingPayments = Number(r.rows[0]?.total ?? 0);
 
     try {
       r = await db.query(
-        "SELECT COUNT(*) as total FROM fb_orders WHERE DATE(created_at) = CURDATE()"
-      ) as [BookingCountRow[], unknown];
-      todayFbOrders = r[0][0]?.total ?? 0;
+        "SELECT COUNT(*) as total FROM fb_orders WHERE DATE(created_at) = CURRENT_DATE"
+      );
+      todayFbOrders = Number(r.rows[0]?.total ?? 0);
     } catch {
       todayFbOrders = 0;
     }
@@ -98,8 +86,8 @@ export default async function DashboardPage() {
     try {
       r = await db.query(
         "SELECT COUNT(*) as total FROM security_incidents WHERE status != 'resolved'"
-      ) as [BookingCountRow[], unknown];
-      openIncidents = r[0][0]?.total ?? 0;
+      );
+      openIncidents = Number(r.rows[0]?.total ?? 0);
     } catch {
       openIncidents = 0;
     }

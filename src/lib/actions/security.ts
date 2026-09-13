@@ -5,24 +5,24 @@ import { getSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function getIncidents() {
-  const [rows] = await pool.execute(
+  const result = await pool.query(
     `SELECT si.*, u.full_name as reporter_name
      FROM security_incidents si
      LEFT JOIN users u ON si.reported_by_user = u.id
      ORDER BY si.created_at DESC`
   );
-  return rows as any[];
+  return result.rows as any[];
 }
 
 export async function getIncidentStats() {
-  const [openCount] = await pool.execute("SELECT COUNT(*) as c FROM security_incidents WHERE status = 'open'");
-  const [todayCount] = await pool.execute("SELECT COUNT(*) as c FROM security_incidents WHERE DATE(created_at) = CURDATE()");
-  const [totalCount] = await pool.execute("SELECT COUNT(*) as c FROM security_incidents");
+  const openResult = await pool.query("SELECT COUNT(*) as c FROM security_incidents WHERE status = 'open'");
+  const todayResult = await pool.query("SELECT COUNT(*) as c FROM security_incidents WHERE DATE(created_at) = CURRENT_DATE");
+  const totalResult = await pool.query("SELECT COUNT(*) as c FROM security_incidents");
 
   return {
-    openCount: (openCount as any[])[0].c,
-    todayCount: (todayCount as any[])[0].c,
-    totalCount: (totalCount as any[])[0].c,
+    openCount: openResult.rows[0].c,
+    todayCount: todayResult.rows[0].c,
+    totalCount: totalResult.rows[0].c,
   };
 }
 
@@ -41,9 +41,9 @@ export async function createIncident(data: {
   if (!description) throw new Error('Description is required');
   if (!incident_type) throw new Error('Incident type is required');
 
-  await pool.execute(
+  await pool.query(
     `INSERT INTO security_incidents (incident_type, severity, location, description, reported_by, status, reported_by_user)
-     VALUES (?, ?, ?, ?, ?, 'open', ?)`,
+     VALUES ($1, $2, $3, $4, $5, 'open', $6)`,
     [incident_type, severity || 'low', location || '', description, reported_by || user.full_name, user.id]
   );
 
@@ -57,8 +57,8 @@ export async function updateIncidentStatus(incidentId: number, newStatus: string
 
   if (!['open', 'investigating', 'resolved', 'closed'].includes(newStatus)) throw new Error('Invalid status');
 
-  await pool.execute(
-    'UPDATE security_incidents SET status = ? WHERE id = ?',
+  await pool.query(
+    'UPDATE security_incidents SET status = $1 WHERE id = $2',
     [newStatus, incidentId]
   );
 
@@ -67,25 +67,25 @@ export async function updateIncidentStatus(incidentId: number, newStatus: string
 }
 
 export async function getVisitors() {
-  const [todayVisitors] = await pool.execute(
-    "SELECT * FROM visitor_log WHERE DATE(time_in) = CURDATE() ORDER BY time_in DESC"
+  const todayResult = await pool.query(
+    "SELECT * FROM visitor_log WHERE DATE(time_in) = CURRENT_DATE ORDER BY time_in DESC"
   );
-  const [activeVisitors] = await pool.execute(
+  const activeResult = await pool.query(
     "SELECT * FROM visitor_log WHERE time_out IS NULL ORDER BY time_in DESC"
   );
-  const [recentVisitors] = await pool.execute(
+  const recentResult = await pool.query(
     "SELECT * FROM visitor_log ORDER BY time_in DESC LIMIT 50"
   );
-  const [totalResult] = await pool.execute("SELECT COUNT(*) as c FROM visitor_log");
+  const totalResult = await pool.query("SELECT COUNT(*) as c FROM visitor_log");
 
   return {
-    todayVisitors: todayVisitors as any[],
-    activeVisitors: activeVisitors as any[],
-    recentVisitors: recentVisitors as any[],
+    todayVisitors: todayResult.rows as any[],
+    activeVisitors: activeResult.rows as any[],
+    recentVisitors: recentResult.rows as any[],
     stats: {
-      today: (todayVisitors as any[]).length,
-      active: (activeVisitors as any[]).length,
-      total: (totalResult as any[])[0].c,
+      today: todayResult.rows.length,
+      active: activeResult.rows.length,
+      total: totalResult.rows[0].c,
     },
   };
 }
@@ -106,9 +106,9 @@ export async function logVisitor(data: {
 
   if (!visitor_name) throw new Error('Visitor name is required');
 
-  await pool.execute(
+  await pool.query(
     `INSERT INTO visitor_log (visitor_name, visitor_phone, visitor_id_number, purpose, visiting_guest, room_number, vehicle_number, time_in, logged_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)`,
     [visitor_name, visitor_phone || '', visitor_id_number || '', purpose || '', visiting_guest || '', room_number || '', vehicle_number || '', user.id]
   );
 
@@ -120,8 +120,8 @@ export async function checkoutVisitor(visitorId: number) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
 
-  await pool.execute(
-    'UPDATE visitor_log SET time_out = NOW() WHERE id = ?',
+  await pool.query(
+    'UPDATE visitor_log SET time_out = NOW() WHERE id = $1',
     [visitorId]
   );
 
@@ -130,14 +130,14 @@ export async function checkoutVisitor(visitorId: number) {
 }
 
 export async function getPatrolLogs() {
-  const [rows] = await pool.execute(
+  const result = await pool.query(
     `SELECT si.*, u.full_name as reported_by_name
      FROM security_incidents si
      LEFT JOIN users u ON si.reported_by = u.id
      WHERE si.incident_type = 'patrol'
      ORDER BY si.created_at DESC LIMIT 50`
   );
-  return rows as any[];
+  return result.rows as any[];
 }
 
 export async function logPatrol(data: {
@@ -153,9 +153,9 @@ export async function logPatrol(data: {
   if (!area) throw new Error('Area is required');
   if (!status) throw new Error('Status is required');
 
-  await pool.execute(
+  await pool.query(
     `INSERT INTO security_incidents (incident_type, severity, location, description, reported_by, status, created_at)
-     VALUES ('patrol', ?, ?, ?, ?, 'open', NOW())`,
+     VALUES ('patrol', $1, $2, $3, $4, 'open', NOW())`,
     [status, area, notes || '', user.id]
   );
 

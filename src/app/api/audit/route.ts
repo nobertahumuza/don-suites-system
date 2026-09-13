@@ -17,44 +17,38 @@ export async function GET(request: Request) {
 
     const conditions = ['1=1'];
     const params: any[] = [];
-    const types: string[] = [];
 
     if (filterUser) {
-      conditions.push('al.user_id = ?');
+      conditions.push(`al.user_id = $${params.length + 1}`);
       params.push(parseInt(filterUser));
-      types.push('i');
     }
     if (filterEntity) {
-      conditions.push('al.entity_type = ?');
+      conditions.push(`al.entity_type = $${params.length + 1}`);
       params.push(filterEntity);
-      types.push('s');
     }
     if (filterAction) {
-      conditions.push('al.action = ?');
+      conditions.push(`al.action = $${params.length + 1}`);
       params.push(filterAction);
-      types.push('s');
     }
     if (filterDate) {
-      conditions.push('DATE(al.created_at) = ?');
+      conditions.push(`DATE(al.created_at) = $${params.length + 1}`);
       params.push(filterDate);
-      types.push('s');
     }
     if (filterSearch) {
-      conditions.push('(al.action LIKE ? OR al.entity_type LIKE ?)');
+      conditions.push(`(al.action LIKE $${params.length + 1} OR al.entity_type LIKE $${params.length + 2})`);
       params.push(`%${filterSearch}%`, `%${filterSearch}%`);
-      types.push('ss');
     }
 
     const where = conditions.join(' AND ');
 
-    const [countRows] = await pool.execute(
+    const countResult = await pool.query(
       `SELECT COUNT(*) as c FROM activity_log al WHERE ${where}`,
       params
     );
-    const total = (countRows as any[])[0].c;
+    const total = Number(countResult.rows[0].c);
     const totalPages = Math.max(1, Math.ceil(total / perPage));
 
-    const [logRows] = await pool.execute(
+    const logResult = await pool.query(
       `SELECT al.*, u.full_name, u.username
        FROM activity_log al
        LEFT JOIN users u ON al.user_id = u.id
@@ -64,18 +58,18 @@ export async function GET(request: Request) {
       params
     );
 
-    const [userRows] = await pool.execute('SELECT id, full_name, username FROM users ORDER BY full_name');
-    const [entityRows] = await pool.execute('SELECT DISTINCT entity_type FROM activity_log ORDER BY entity_type');
-    const [actionRows] = await pool.execute('SELECT DISTINCT action FROM activity_log ORDER BY action');
+    const userResult = await pool.query('SELECT id, full_name, username FROM users ORDER BY full_name');
+    const entityResult = await pool.query('SELECT DISTINCT entity_type FROM activity_log ORDER BY entity_type');
+    const actionResult = await pool.query('SELECT DISTINCT action FROM activity_log ORDER BY action');
 
     return NextResponse.json({
-      logs: logRows,
+      logs: logResult.rows,
       total,
       totalPages,
       page,
-      users: userRows,
-      entityTypes: entityRows,
-      actionTypes: actionRows,
+      users: userResult.rows,
+      entityTypes: entityResult.rows,
+      actionTypes: actionResult.rows,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -1,47 +1,54 @@
 import { NextResponse } from 'next/server';
-import { execSync } from 'child_process';
-import { existsSync, mkdirSync, statSync } from 'fs';
-import { join } from 'path';
+import pool from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST() {
   try {
-    const backupDir = join(process.cwd(), 'backups');
-    if (!existsSync(backupDir)) mkdirSync(backupDir, { recursive: true });
+    const tables = [
+      'users', 'room_types', 'rooms', 'guests', 'bookings',
+      'fb_categories', 'fb_items', 'fb_orders', 'fb_order_items',
+      'financial_transactions', 'expense_categories', 'conference_halls',
+      'conference_bookings', 'garden_bookings', 'camping_bookings',
+      'pa_hires', 'vehicle_parking', 'visitor_log', 'security_incidents',
+      'staff', 'staff_shifts', 'staff_leave', 'staff_wages',
+      'inventory_categories', 'inventory_items', 'stock_transactions',
+      'seasonal_pricing', 'pricing', 'discounts', 'price_changes',
+      'activity_log', 'notifications', 'email_settings', 'email_logs',
+      'audit_logs', 'utility_bills', 'guest_searches'
+    ];
 
-    const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '-');
-    const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
-    const filename = `backup_${dateStr}_${timeStr}.sql`;
-    const filepath = join(backupDir, filename);
+    let sql = '-- Hotel Management System Backup\n';
+    sql += `-- Generated: ${new Date().toISOString()}\n\n`;
 
-    const dbHost = process.env.DB_HOST || 'localhost';
-    const dbUser = process.env.DB_USER || 'root';
-    const dbPass = process.env.DB_PASS || '';
-    const dbName = process.env.DB_NAME || 'hotel_management';
+    for (const table of tables) {
+      try {
+        const { rows: data } = await pool.query(`SELECT * FROM ${table}`);
+        if (data.length === 0) continue;
 
-    const mysqlPath = process.platform === 'win32'
-      ? 'C:\\xampp\\mysql\\bin\\mysqldump.exe'
-      : 'mysqldump';
+        sql += `-- ${table} (${data.length} rows)\n`;
+        const cols = Object.keys(data[0]);
 
-    const cmd = `"${mysqlPath}" --user=${dbUser} --password=${dbPass} --host=${dbHost} ${dbName} > "${filepath}" 2>&1`;
-
-    try {
-      execSync(cmd, { timeout: 60000 });
-    } catch { /* may still create the file */ }
-
-    if (!existsSync(filepath) || statSync(filepath).size === 0) {
-      return NextResponse.json({ success: false, error: 'Backup failed - empty file created' });
+        for (const row of data) {
+          const values = cols.map(c => {
+            const v = row[c];
+            if (v === null) return 'NULL';
+            if (typeof v === 'number') return String(v);
+            return `'${String(v).replace(/'/g, "''")}'`;
+          });
+          sql += `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${values.join(', ')});\n`;
+        }
+        sql += '\n';
+      } catch { /* table may not exist */ }
     }
 
-    const size = statSync(filepath).size;
-    const sizeKB = (size / 1024).toFixed(1) + ' KB';
+    const sizeKB = (Buffer.byteLength(sql) / 1024).toFixed(1);
 
-    return NextResponse.json({
-      success: true,
-      filename,
-      size: sizeKB,
+    return new NextResponse(sql, {
+      headers: {
+        'Content-Type': 'application/sql',
+        'Content-Disposition': `attachment; filename="backup_${new Date().toISOString().slice(0, 10)}.sql"`,
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

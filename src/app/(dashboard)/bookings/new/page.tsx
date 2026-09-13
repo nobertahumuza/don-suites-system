@@ -9,20 +9,19 @@ export default async function NewBookingPage({
   const params = await searchParams;
   const preselectedRoom = params.room_id ? parseInt(params.room_id) : 0;
 
-  const [roomTypes] = await pool.execute('SELECT id, name, price, cooking_space_price FROM room_types WHERE status = "active" ORDER BY name ASC');
-  const types = roomTypes as Array<Record<string, unknown>>;
+  const { rows: types } = await pool.query('SELECT id, name, price, cooking_space_price FROM room_types WHERE status = $1 ORDER BY name ASC', ['active']);
 
-  const typeIds = types.map((t) => Number(t.id));
+  const typeIds = types.map((t: Record<string, unknown>) => Number(t.id));
   let availableRooms: Array<Record<string, unknown>> = [];
   if (typeIds.length > 0) {
-    const placeholders = typeIds.map(() => '?').join(',');
-    const [rooms] = await pool.execute(
+    const placeholders = typeIds.map((_, i) => `$${i + 1}`).join(',');
+    const { rows: rooms } = await pool.query(
       `SELECT r.*, rt.name AS type_name, rt.price, rt.cooking_space_price
        FROM rooms r
        LEFT JOIN room_types rt ON r.room_type_id = rt.id
        WHERE r.status = 'available' AND r.room_type_id IN (${placeholders})
        ORDER BY r.room_number ASC`,
-      typeIds as (string | number)[]
+      typeIds
     );
     availableRooms = rooms as Array<Record<string, unknown>>;
   }

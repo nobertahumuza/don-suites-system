@@ -11,13 +11,11 @@ export default async function NewRoomPage({
   const params = await searchParams;
   const editId = params.edit ? parseInt(params.edit) : 0;
 
-  const [roomTypes] = await pool.execute('SELECT * FROM room_types ORDER BY name ASC');
-  const types = roomTypes as Array<Record<string, unknown>>;
+  const { rows: types } = await pool.query('SELECT * FROM room_types ORDER BY name ASC');
 
   let room = null;
   if (editId > 0) {
-    const [roomRows] = await pool.execute('SELECT * FROM rooms WHERE id = ?', [editId]);
-    const rooms = roomRows as Array<Record<string, unknown>>;
+    const { rows: rooms } = await pool.query('SELECT * FROM rooms WHERE id = $1', [editId]);
     if (rooms.length === 0) {
       redirect('/rooms');
     }

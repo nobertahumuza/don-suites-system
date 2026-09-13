@@ -5,9 +5,9 @@ import { getSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function getEmailSettings() {
-  const [rows] = await pool.execute('SELECT setting_key, setting_value FROM email_settings');
+  const result = await pool.query('SELECT setting_key, setting_value FROM email_settings');
   const settings: Record<string, string> = {};
-  (rows as any[]).forEach((row: any) => {
+  result.rows.forEach((row: any) => {
     settings[row.setting_key] = row.setting_value;
   });
   return settings;
@@ -31,9 +31,9 @@ export async function saveEmailSettings(data: {
 
   for (const field of fields) {
     const val = data[field] || '';
-    await pool.execute(
-      'INSERT INTO email_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?',
-      [field, val, val]
+    await pool.query(
+      'INSERT INTO email_settings (setting_key, setting_value) VALUES ($1, $2) ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value',
+      [field, val]
     );
   }
 
@@ -42,8 +42,8 @@ export async function saveEmailSettings(data: {
 }
 
 export async function getBackupList() {
-  const [rows] = await pool.execute(
+  const result = await pool.query(
     `SELECT setting_key, setting_value FROM email_settings WHERE setting_key = 'backup_dir'`
   );
-  return (rows as any[])[0]?.setting_value || 'backups';
+  return result.rows[0]?.setting_value || 'backups';
 }

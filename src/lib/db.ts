@@ -1,13 +1,22 @@
-import mysql from 'mysql2/promise';
+import { Pool } from '@neondatabase/serverless';
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'hotel_management',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 10,
 });
 
 export default pool;
+
+export async function query(text: string, params?: unknown[]) {
+  const result = await pool.query(text, params);
+  return result.rows;
+}
+
+export async function queryOne(text: string, params?: unknown[]) {
+  const rows = await query(text, params);
+  return rows[0] || null;
+}
+
+export async function getClient() {
+  return pool.connect();
+}

@@ -26,17 +26,17 @@ async function getRooms(statusFilter: string) {
   const params: string[] = [];
 
   if (statusFilter && ['available', 'occupied', 'reserved', 'cleaning', 'out_of_service'].includes(statusFilter)) {
-    query += ' WHERE r.status = ?';
+    query += ' WHERE r.status = $1';
     params.push(statusFilter);
   }
 
   query += ' ORDER BY r.room_number ASC';
-  const [rows] = await pool.execute(query, params);
+  const { rows } = await pool.query(query, params);
   return rows as Array<Record<string, unknown>>;
 }
 
 async function getStats() {
-  const [rows] = await pool.execute(`
+  const { rows } = await pool.query(`
     SELECT
       COUNT(*) AS total_rooms,
       SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) AS available_count,
@@ -46,7 +46,7 @@ async function getStats() {
       SUM(CASE WHEN status = 'out_of_service' THEN 1 ELSE 0 END) AS out_of_service_count
     FROM rooms
   `);
-  return (rows as Array<Record<string, unknown>>)[0];
+  return rows[0];
 }
 
 function StatusBadge({ status }: { status: string }) {

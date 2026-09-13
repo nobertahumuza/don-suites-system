@@ -4,23 +4,22 @@ import { checkIn } from '@/lib/actions/booking';
 import CheckinButton from './checkin-button';
 
 async function getBookingByRoom(roomId: number) {
-  const [rows] = await pool.execute(
+  const { rows: bookings } = await pool.query(
     `SELECT b.*, g.full_name, g.phone, g.email, g.id_type, g.id_number, g.nationality,
             r.room_number, rt.name AS type_name, rt.price
      FROM bookings b
      JOIN guests g ON b.guest_id = g.id
      JOIN rooms r ON b.room_id = r.id
      LEFT JOIN room_types rt ON r.room_type_id = rt.id
-     WHERE b.status = 'confirmed' AND b.room_id = ?
+     WHERE b.status = 'confirmed' AND b.room_id = $1
      ORDER BY b.check_in_date ASC LIMIT 1`,
     [roomId]
   );
-  const bookings = rows as Array<Record<string, unknown>>;
   return bookings.length > 0 ? bookings[0] : null;
 }
 
 async function getPendingCheckins() {
-  const [rows] = await pool.execute(
+  const { rows } = await pool.query(
     `SELECT b.*, g.full_name, g.phone, r.room_number, rt.name AS type_name
      FROM bookings b
      JOIN guests g ON b.guest_id = g.id

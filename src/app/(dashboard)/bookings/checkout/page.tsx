@@ -3,23 +3,22 @@ import Link from 'next/link';
 import CheckoutButton from './checkout-button';
 
 async function getBookingByRoom(roomId: number) {
-  const [rows] = await pool.execute(
+  const { rows: bookings } = await pool.query(
     `SELECT b.*, g.full_name, g.phone, g.email, g.id_type, g.id_number, g.nationality,
             r.room_number, rt.name AS type_name, rt.price
      FROM bookings b
      JOIN guests g ON b.guest_id = g.id
      JOIN rooms r ON b.room_id = r.id
      LEFT JOIN room_types rt ON r.room_type_id = rt.id
-     WHERE b.status = 'checked_in' AND b.room_id = ?
+     WHERE b.status = 'checked_in' AND b.room_id = $1
      ORDER BY b.actual_check_in DESC LIMIT 1`,
     [roomId]
   );
-  const bookings = rows as Array<Record<string, unknown>>;
   return bookings.length > 0 ? bookings[0] : null;
 }
 
 async function getActiveStays() {
-  const [rows] = await pool.execute(
+  const { rows } = await pool.query(
     `SELECT b.*, g.full_name, g.phone, r.room_number, rt.name AS type_name, b.actual_check_in
      FROM bookings b
      JOIN guests g ON b.guest_id = g.id

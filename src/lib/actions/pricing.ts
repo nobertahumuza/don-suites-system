@@ -5,18 +5,18 @@ import { getSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function getSeasonalPricing() {
-  const [rows] = await pool.execute(
+  const result = await pool.query(
     `SELECT sp.*, rt.name as room_type_name
      FROM seasonal_pricing sp
      LEFT JOIN room_types rt ON sp.room_type_id = rt.id
      ORDER BY sp.start_date DESC`
   );
-  return rows as any[];
+  return result.rows as any[];
 }
 
 export async function getRoomTypes() {
-  const [rows] = await pool.execute('SELECT * FROM room_types ORDER BY name');
-  return rows as any[];
+  const result = await pool.query('SELECT * FROM room_types ORDER BY name');
+  return result.rows as any[];
 }
 
 export async function addSeasonalPricing(data: {
@@ -39,13 +39,13 @@ export async function addSeasonalPricing(data: {
   if (!room_type_id) throw new Error('Room type is required');
 
   if (cooking_space_price !== undefined && cooking_space_price !== null) {
-    await pool.execute(
-      'INSERT INTO seasonal_pricing (room_type_id, season_name, start_date, end_date, price, cooking_space_price) VALUES (?, ?, ?, ?, ?, ?)',
+    await pool.query(
+      'INSERT INTO seasonal_pricing (room_type_id, season_name, start_date, end_date, price, cooking_space_price) VALUES ($1, $2, $3, $4, $5, $6)',
       [room_type_id, season_name, start_date, end_date, price, cooking_space_price]
     );
   } else {
-    await pool.execute(
-      'INSERT INTO seasonal_pricing (room_type_id, season_name, start_date, end_date, price) VALUES (?, ?, ?, ?, ?)',
+    await pool.query(
+      'INSERT INTO seasonal_pricing (room_type_id, season_name, start_date, end_date, price) VALUES ($1, $2, $3, $4, $5)',
       [room_type_id, season_name, start_date, end_date, price]
     );
   }
@@ -58,7 +58,7 @@ export async function deleteSeasonalPricing(id: number) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
 
-  await pool.execute('DELETE FROM seasonal_pricing WHERE id = ?', [id]);
+  await pool.query('DELETE FROM seasonal_pricing WHERE id = $1', [id]);
   revalidatePath('/pricing/seasonal');
   return { success: true };
 }
@@ -68,12 +68,12 @@ export async function getDiscounts(filters?: { status?: string }) {
   const params: any[] = [];
 
   if (filters?.status && ['active', 'inactive'].includes(filters.status)) {
-    conditions.push('d.status = ?');
+    conditions.push(`d.status = $${params.length + 1}`);
     params.push(filters.status);
   }
 
   const where = conditions.join(' AND ');
-  const [rows] = await pool.execute(
+  const rowsResult = await pool.query(
     `SELECT d.*, u.full_name as created_by_name
      FROM discounts d
      LEFT JOIN users u ON d.created_by = u.id
@@ -82,17 +82,17 @@ export async function getDiscounts(filters?: { status?: string }) {
     params
   );
 
-  const [activeCount] = await pool.execute("SELECT COUNT(*) as c FROM discounts WHERE status = 'active'");
-  const [expiredCount] = await pool.execute("SELECT COUNT(*) as c FROM discounts WHERE valid_until < CURDATE()");
-  const [totalUses] = await pool.execute("SELECT COALESCE(SUM(used_count),0) as c FROM discounts");
+  const activeCountResult = await pool.query("SELECT COUNT(*) as c FROM discounts WHERE status = 'active'");
+  const expiredCountResult = await pool.query("SELECT COUNT(*) as c FROM discounts WHERE valid_until < CURRENT_DATE");
+  const totalUsesResult = await pool.query("SELECT COALESCE(SUM(used_count),0) as c FROM discounts");
 
   return {
-    discounts: rows as any[],
+    discounts: rowsResult.rows as any[],
     stats: {
-      total: (rows as any[]).length,
-      active: (activeCount as any[])[0].c,
-      expired: (expiredCount as any[])[0].c,
-      totalUses: (totalUses as any[])[0].c,
+      total: rowsResult.rows.length,
+      active: Number(activeCountResult.rows[0].c),
+      expired: Number(expiredCountResult.rows[0].c),
+      totalUses: Number(totalUsesResult.rows[0].c),
     },
   };
 }
@@ -119,9 +119,9 @@ export async function createDiscount(data: {
   if (!valid_from || !valid_until) throw new Error('Validity period is required');
   if (valid_from > valid_until) throw new Error('Valid from must be before valid until');
 
-  await pool.execute(
+  await pool.query(
     `INSERT INTO discounts (code, description, discount_type, discount_value, min_amount, max_uses, applies_to, valid_from, valid_until, status, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       code.toUpperCase(),
       description || '',
@@ -145,7 +145,7 @@ export async function deleteDiscount(id: number) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
 
-  await pool.execute('DELETE FROM discounts WHERE id = ?', [id]);
+  await pool.query('DELETE FROM discounts WHERE id = $1', [id]);
   revalidatePath('/pricing/discounts');
   return { success: true };
 }

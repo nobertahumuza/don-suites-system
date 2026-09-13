@@ -11,10 +11,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
     }
 
-    const [rows] = await pool.execute(
-      'SELECT id, username, password, full_name, role, status FROM users WHERE username = ?',
+    const result = await pool.query(
+      'SELECT id, username, password, full_name, role, status FROM users WHERE username = $1',
       [username]
     );
+    const rows = result.rows;
 
     const users = rows as User[];
     if (users.length === 0) {
