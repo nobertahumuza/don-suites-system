@@ -1,7 +1,7 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import Link from 'next/link';
 import Sidebar from './sidebar';
+import SidebarToggle from './sidebar-toggle';
 
 export default async function DashboardLayout({
   children,
@@ -24,17 +24,7 @@ export default async function DashboardLayout({
           }}
         >
           <div className="flex items-center gap-3">
-            <button
-              id="sidebar-toggle"
-              className="md:hidden text-white text-lg"
-              onClick={() => {
-                const sidebar = document.getElementById('mobile-sidebar');
-                if (sidebar) sidebar.classList.toggle('translate-x-0');
-                if (sidebar) sidebar.classList.toggle('-translate-x-full');
-              }}
-            >
-              <i className="fas fa-bars"></i>
-            </button>
+            <SidebarToggle />
             <h1 className="text-white text-sm font-semibold tracking-wide">
               DON <span style={{ color: '#c9a96e' }}>SUITES</span>
             </h1>
