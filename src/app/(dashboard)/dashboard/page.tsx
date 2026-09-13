@@ -70,7 +70,7 @@ export default async function DashboardPage() {
     activeGuests = Number(r.rows[0]?.total ?? 0);
 
     r = await db.query(
-      "SELECT COUNT(*) as total FROM financial_transactions WHERE type = 'income' AND status = 'pending'"
+      "SELECT COUNT(*) as total FROM fb_orders WHERE payment_status = 'unpaid'"
     );
     pendingPayments = Number(r.rows[0]?.total ?? 0);
 
