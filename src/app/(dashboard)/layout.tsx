@@ -1,4 +1,4 @@
-import { requireAuth } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import Sidebar from './sidebar';
@@ -8,7 +8,10 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await requireAuth();
+  const user = await getSession();
+  if (!user) {
+    redirect('/login');
+  }
 
   return (
     <div className="flex min-h-screen" style={{ background: '#f1f5f9' }}>
