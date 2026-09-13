@@ -1,15 +1,30 @@
-import { Pool } from '@neondatabase/serverless';
+import { neon } from '@neondatabase/serverless';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 1,
-});
+const sql = neon(process.env.DATABASE_URL!);
 
-export default pool;
+export default {
+  query: async (text: string, params?: unknown[]) => {
+    const result = await sql(text, params ?? []);
+    return { rows: result };
+  },
+  // For transactions / getClient compatibility
+  connect: async () => {
+    return {
+      query: async (text: string, params?: unknown[]) => {
+        const result = await sql(text, params ?? []);
+        return { rows: result };
+      },
+      release: () => {},
+      beginTransaction: async () => {},
+      commit: async () => {},
+      rollback: async () => {},
+    };
+  },
+};
 
 export async function query(text: string, params?: unknown[]) {
-  const result = await pool.query(text, params);
-  return result.rows;
+  const result = await sql(text, params ?? []);
+  return result;
 }
 
 export async function queryOne(text: string, params?: unknown[]) {
@@ -18,5 +33,11 @@ export async function queryOne(text: string, params?: unknown[]) {
 }
 
 export async function getClient() {
-  return pool.connect();
+  return {
+    query: async (text: string, params?: unknown[]) => {
+      const result = await sql(text, params ?? []);
+      return { rows: result };
+    },
+    release: () => {},
+  };
 }

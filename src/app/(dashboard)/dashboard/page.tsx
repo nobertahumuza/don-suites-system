@@ -91,8 +91,8 @@ export default async function DashboardPage() {
     } catch {
       openIncidents = 0;
     }
-  } catch {
-    // Database tables may not exist yet
+  } catch (err: any) {
+    console.error('Dashboard query error:', err?.message || err);
   }
 
   const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
