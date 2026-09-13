@@ -1,16 +1,8 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-
-neonConfig.fetchConnectionCache = true;
+import { Pool } from '@neondatabase/serverless';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: 1,
-  idleTimeoutMillis: 10000,
-  connectionTimeoutMillis: 10000,
-});
-
-pool.on('error', (err) => {
-  console.error('Pool error:', err.message);
 });
 
 export default pool;

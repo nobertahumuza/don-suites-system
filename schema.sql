@@ -598,10 +598,10 @@ CREATE TABLE IF NOT EXISTS guest_searches (
 -- Seed Data: Default Users (passwords are bcrypt hashed)
 -- ============================================================
 INSERT INTO users (username, password, full_name, role, status) VALUES
-  ('admin', '$2b$10$K3gE3Jugc5TvaRUHzNgjFOwYb3y8Gv.1WaCi0WmM23IkX5aBhk7bG', 'Administrator', 'admin', 'active'),
-  ('reception', '$2b$10$EqjJIUePU/4cQ0HwlcOxqOCW7mt95OTmRplbv8fc8w/zxyeDHjtIy', 'Receptionist', 'reception', 'active'),
-  ('storekeeper', '$2b$10$ux8UivnNFdZMyZ88Dursv.TFv4h42QgvDSfbCS9Bv8wjYe2k3HGH2', 'Storekeeper', 'storekeeper', 'active'),
-  ('security', '$2b$10$xXunMk/1EKWvMq6f4egnkeolRYs71cr3s0oD9XW1VpgdalST3ZYQG', 'Security Officer', 'security', 'active')
+  ('admin', '$2b$10$s7paKq3U/T/wXVgEIP81kO.54vongthjb3F8YcvAFB0eRYPVNX9YG', 'Administrator', 'admin', 'active'),
+  ('reception', '$2b$10$Ci8rXup.pHqOTtXmQ2qF5uFMrjx4bqQBN7VmCDle2ZubjYiUt6dA.', 'Receptionist', 'reception', 'active'),
+  ('storekeeper', '$2b$10$.3Uky1e4mC7Y.dFslZrrN.6dpbDk/zgGzqsb.3BfZRMt0u2Ev6Qg.', 'Storekeeper', 'storekeeper', 'active'),
+  ('security', '$2b$10$vXpgCAnyKNHvgPIc1lSxQeJGDAQPEQgOR.DY5hmVZs2dRL8StqCUG', 'Security Officer', 'security', 'active')
 ON CONFLICT (username) DO NOTHING;
 
 -- ============================================================
