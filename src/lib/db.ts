@@ -4,39 +4,32 @@ const sql = neon(process.env.DATABASE_URL!);
 
 export default {
   query: async (text: string, params?: unknown[]) => {
-    const result = await sql(text, params ?? []);
-    return { rows: result };
+    const rows = await sql.query(text, params ?? []);
+    return { rows };
   },
-  // For transactions / getClient compatibility
-  connect: async () => {
-    return {
-      query: async (text: string, params?: unknown[]) => {
-        const result = await sql(text, params ?? []);
-        return { rows: result };
-      },
-      release: () => {},
-      beginTransaction: async () => {},
-      commit: async () => {},
-      rollback: async () => {},
-    };
-  },
+  connect: async () => ({
+    query: async (text: string, params?: unknown[]) => {
+      const rows = await sql.query(text, params ?? []);
+      return { rows };
+    },
+    release: () => {},
+  }),
 };
 
 export async function query(text: string, params?: unknown[]) {
-  const result = await sql(text, params ?? []);
-  return result;
+  return await sql.query(text, params ?? []);
 }
 
 export async function queryOne(text: string, params?: unknown[]) {
-  const rows = await query(text, params);
+  const rows = await sql.query(text, params ?? []);
   return rows[0] || null;
 }
 
 export async function getClient() {
   return {
     query: async (text: string, params?: unknown[]) => {
-      const result = await sql(text, params ?? []);
-      return { rows: result };
+      const rows = await sql.query(text, params ?? []);
+      return { rows };
     },
     release: () => {},
   };

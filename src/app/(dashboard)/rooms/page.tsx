@@ -147,7 +147,7 @@ export default async function RoomsPage({
                   </td>
                 </tr>
               ) : (
-                rooms.map((room) => (
+                rooms.map((room: Record<string, unknown>) => (
                   <tr key={room.id as number} className="border-b border-gray-50 hover:bg-gray-50/50">
                     <td className="px-4 py-3 font-bold text-gray-900">{room.room_number as string}</td>
                     <td className="px-4 py-3 text-gray-600">{(room.type_name as string) || 'N/A'}</td>

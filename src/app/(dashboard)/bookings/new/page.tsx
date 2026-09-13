@@ -14,7 +14,7 @@ export default async function NewBookingPage({
   const typeIds = types.map((t: Record<string, unknown>) => Number(t.id));
   let availableRooms: Array<Record<string, unknown>> = [];
   if (typeIds.length > 0) {
-    const placeholders = typeIds.map((_, i) => `$${i + 1}`).join(',');
+    const placeholders = typeIds.map((_: unknown, i: number) => `$${i + 1}`).join(',');
     const { rows: rooms } = await pool.query(
       `SELECT r.*, rt.name AS type_name, rt.price, rt.cooking_space_price
        FROM rooms r
