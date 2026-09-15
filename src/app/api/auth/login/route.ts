@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import pool from '@/lib/db';
-import { createToken, User } from '@/lib/auth';
+import { createToken, findUserByUsername, type User } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,24 +10,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
     }
 
-    const result = await pool.query(
-      'SELECT id, username, password, full_name, role, status FROM users WHERE username = $1',
-      [username]
-    );
-    const rows = result.rows;
+    const user = await findUserByUsername(username);
 
-    const users = rows as User[];
-    if (users.length === 0) {
+    if (!user) {
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
-
-    const user = users[0];
 
     if (user.status !== 'active') {
       return NextResponse.json({ error: 'Your account is inactive. Contact administrator.' }, { status: 403 });
     }
 
-    const passwordMatch = await bcrypt.compare(password, (user as unknown as { password: string }).password);
+    const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
@@ -37,7 +29,7 @@ export async function POST(request: NextRequest) {
       id: user.id,
       username: user.username,
       full_name: user.full_name,
-      role: user.role,
+      role: user.role as User['role'],
       status: user.status,
     });
 
@@ -59,8 +51,9 @@ export async function POST(request: NextRequest) {
     });
 
     return response;
-  } catch (error: any) {
-    console.error('Login error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    console.error('Login error:', err?.message || error);
+    return NextResponse.json({ error: err?.message || 'Internal server error' }, { status: 500 });
   }
 }

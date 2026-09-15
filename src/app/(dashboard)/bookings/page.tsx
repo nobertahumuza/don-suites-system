@@ -1,4 +1,4 @@
-import pool from '@/lib/db';
+import prisma from '@/lib/db';
 import Link from 'next/link';
 import { cancelBooking } from '@/lib/actions/booking';
 import BookingActions from './booking-actions';
@@ -22,23 +22,22 @@ const statusBg: Record<string, string> = {
 };
 
 async function getBookings(filter: string) {
-  let query = `SELECT b.*, g.full_name, g.phone, r.room_number, rt.name as type_name
-    FROM bookings b
-    JOIN guests g ON b.guest_id = g.id
-    JOIN rooms r ON b.room_id = r.id
-    LEFT JOIN room_types rt ON r.room_type_id = rt.id`;
+  const where =
+    filter === 'cancelled'
+      ? { status: 'cancelled' }
+      : filter === 'all'
+      ? {}
+      : { status: { in: ['pending', 'confirmed', 'checked_in'] } };
 
-  if (filter === 'cancelled') {
-    query += " WHERE b.status = 'cancelled'";
-  } else if (filter === 'all') {
-    // no filter
-  } else {
-    query += " WHERE b.status IN ('pending', 'confirmed', 'checked_in')";
-  }
-
-  query += ' ORDER BY b.created_at DESC LIMIT 50';
-  const { rows } = await pool.query(query);
-  return rows as Array<Record<string, unknown>>;
+  return prisma.bookings.findMany({
+    where,
+    include: {
+      guests: true,
+      rooms: { include: { room_types: true } },
+    },
+    orderBy: { created_at: 'desc' },
+    take: 50,
+  });
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -126,25 +125,25 @@ export default async function BookingsPage({
                 </tr>
               ) : (
                 bookings.map((b) => (
-                  <tr key={b.id as number} className="border-b border-gray-50 hover:bg-gray-50/50">
-                    <td className="px-4 py-3 font-bold text-gray-900">#{b.id as number}</td>
+                  <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-4 py-3 font-bold text-gray-900">#{b.id}</td>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">{b.full_name as string}</div>
-                      <div className="text-[11px] text-gray-400">{b.phone as string}</div>
+                      <div className="font-medium text-gray-900">{b.guests?.full_name}</div>
+                      <div className="text-[11px] text-gray-400">{b.guests?.phone}</div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="font-bold text-gray-900">{b.room_number as string}</span>
-                      <span className="text-[11px] text-gray-400 ml-1">{b.type_name as string}</span>
+                      <span className="font-bold text-gray-900">{b.rooms?.room_number}</span>
+                      <span className="text-[11px] text-gray-400 ml-1">{b.rooms?.room_types?.name}</span>
                     </td>
                     <td className="px-4 py-3 text-[12px] text-gray-600">
-                      {new Date(b.check_in_date as string).toLocaleDateString('en-US', {
+                      {new Date(b.check_in_date).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric',
                       })}
                     </td>
                     <td className="px-4 py-3 text-[12px] text-gray-600">
-                      {new Date(b.check_out_date as string).toLocaleDateString('en-US', {
+                      {new Date(b.check_out_date).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric',
@@ -154,12 +153,12 @@ export default async function BookingsPage({
                       UGX {Number(b.total_amount).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={b.status as string} />
+                      <StatusBadge status={b.status || 'pending'} />
                     </td>
                     <td className="px-4 py-3">
                       <BookingActions
-                        bookingId={b.id as number}
-                        status={b.status as string}
+                        bookingId={b.id}
+                        status={b.status || 'pending'}
                       />
                     </td>
                   </tr>

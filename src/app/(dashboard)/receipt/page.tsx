@@ -44,16 +44,17 @@ export default async function ReceiptPage({
     const orderItems = await getFbOrderItems(id);
 
     orderLabel = `Order #${id}`;
-    date = new Date(order.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + new Date(order.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const createdAt = order.created_at ? new Date(order.created_at as string | number | Date) : new Date();
+    date = createdAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     guestName = order.guest_name || 'Walk-in';
     roomNumber = order.room_number || '';
-    orderType = order.order_type?.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || '';
+    orderType = (order.order_type || '').replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
     servedBy = order.served_by_name || 'N/A';
-    paymentStatus = order.payment_status;
+    paymentStatus = order.payment_status || '';
     subtotal = Number(order.subtotal);
     surcharge = Number(order.room_service_surcharge);
     total = Number(order.total);
-    status = order.status;
+    status = order.status || '';
     items = orderItems;
   } else {
     return <div className="p-10 text-center text-gray-500">Invalid receipt type</div>;

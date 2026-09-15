@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 
-type Category = { id: number; name: string; description?: string; sort_order: number; item_count: number };
+type Category = { id: number; name: string; description?: string | null; sort_order?: number | null; item_count: number; _count?: unknown; created_at?: unknown };
 
 export default function FbCategoriesView({
   categories,

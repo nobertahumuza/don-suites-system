@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
+import prisma from '@/lib/db';
 
 function getSecret() {
   return new TextEncoder().encode(process.env.JWT_SECRET || 'don_suites_secret_key_2026');
@@ -44,4 +45,8 @@ export async function requireAuth(): Promise<User> {
 
 export function isAdmin(user: User): boolean {
   return user.role === 'admin';
+}
+
+export async function findUserByUsername(username: string) {
+  return prisma.users.findUnique({ where: { username } });
 }

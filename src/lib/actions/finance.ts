@@ -1,6 +1,6 @@
 'use server';
 
-import pool from '@/lib/db';
+import prisma from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
@@ -9,18 +9,24 @@ export async function getFinanceStats() {
   if (!user) throw new Error('Unauthorized');
   const today = new Date().toISOString().split('T')[0];
   const thisMonth = today.slice(0, 7);
+  const monthStart = new Date(`${thisMonth}-01`);
+  const monthEnd = new Date(monthStart);
+  monthEnd.setMonth(monthEnd.getMonth() + 1);
+  const todayDate = new Date(today);
 
-  const todayIncomeResult = await pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM financial_transactions WHERE type='income' AND transaction_date=$1", [today]);
-  const todayExpensesResult = await pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM financial_transactions WHERE type='expense' AND transaction_date=$1", [today]);
-  const monthIncomeResult = await pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM financial_transactions WHERE type='income' AND TO_CHAR(transaction_date, 'YYYY-MM')=$1", [thisMonth]);
-  const monthExpensesResult = await pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM financial_transactions WHERE type='expense' AND TO_CHAR(transaction_date, 'YYYY-MM')=$1", [thisMonth]);
-  const totalIncomeResult = await pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM financial_transactions WHERE type='income'");
-  const totalExpensesResult = await pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM financial_transactions WHERE type='expense'");
+  const [todayIncomeResult, todayExpensesResult, monthIncomeResult, monthExpensesResult, totalIncomeResult, totalExpensesResult] = await Promise.all([
+    prisma.financial_transactions.aggregate({ _sum: { amount: true }, where: { type: 'income', transaction_date: todayDate } }),
+    prisma.financial_transactions.aggregate({ _sum: { amount: true }, where: { type: 'expense', transaction_date: todayDate } }),
+    prisma.financial_transactions.aggregate({ _sum: { amount: true }, where: { type: 'income', transaction_date: { gte: monthStart, lt: monthEnd } } }),
+    prisma.financial_transactions.aggregate({ _sum: { amount: true }, where: { type: 'expense', transaction_date: { gte: monthStart, lt: monthEnd } } }),
+    prisma.financial_transactions.aggregate({ _sum: { amount: true }, where: { type: 'income' } }),
+    prisma.financial_transactions.aggregate({ _sum: { amount: true }, where: { type: 'expense' } }),
+  ]);
 
-  const todayIncomeVal = Number(todayIncomeResult.rows[0]?.total ?? 0);
-  const todayExpensesVal = Number(todayExpensesResult.rows[0]?.total ?? 0);
-  const monthIncomeVal = Number(monthIncomeResult.rows[0]?.total ?? 0);
-  const monthExpensesVal = Number(monthExpensesResult.rows[0]?.total ?? 0);
+  const todayIncomeVal = Number(todayIncomeResult._sum.amount) || 0;
+  const todayExpensesVal = Number(todayExpensesResult._sum.amount) || 0;
+  const monthIncomeVal = Number(monthIncomeResult._sum.amount) || 0;
+  const monthExpensesVal = Number(monthExpensesResult._sum.amount) || 0;
 
   return {
     todayIncome: todayIncomeVal,
@@ -29,19 +35,20 @@ export async function getFinanceStats() {
     monthIncome: monthIncomeVal,
     monthExpenses: monthExpensesVal,
     monthNet: monthIncomeVal - monthExpensesVal,
-    totalIncome: Number(totalIncomeResult.rows[0]?.total ?? 0),
-    totalExpenses: Number(totalExpensesResult.rows[0]?.total ?? 0),
+    totalIncome: Number(totalIncomeResult._sum.amount) || 0,
+    totalExpenses: Number(totalExpensesResult._sum.amount) || 0,
   };
 }
 
 export async function getRecentTransactions(limit = 10) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  const result = await pool.query(
-    `SELECT ft.*, u.username FROM financial_transactions ft JOIN users u ON ft.recorded_by = u.id ORDER BY ft.transaction_date DESC, ft.id DESC LIMIT $1`,
-    [limit]
-  );
-  return result.rows as Array<Record<string, unknown>>;
+  const result = await prisma.financial_transactions.findMany({
+    include: { users: true },
+    orderBy: [{ transaction_date: 'desc' }, { id: 'desc' }],
+    take: limit,
+  });
+  return result.map(r => ({ ...r, username: r.users?.username })) as Array<Record<string, unknown>>;
 }
 
 export async function createExpense(data: {
@@ -60,10 +67,17 @@ export async function createExpense(data: {
   if (!amount || amount <= 0) throw new Error('Amount must be greater than 0');
   if (!transaction_date) throw new Error('Date is required');
 
-  await pool.query(
-    "INSERT INTO financial_transactions (type, category, description, notes, amount, payment_method, transaction_date, recorded_by) VALUES ('expense', $1, $2, $3, $4, $5, $6, $7)",
-    [category, description, notes || null, amount, payment_method || 'cash', transaction_date, user.id]
-  );
+  await prisma.financial_transactions.create({
+    data: {
+      type: 'expense',
+      category,
+      description,
+      amount,
+      payment_method: payment_method || 'cash',
+      transaction_date: new Date(transaction_date),
+      recorded_by: user.id,
+    },
+  });
   revalidatePath('/finance/expenses');
   revalidatePath('/finance');
   return { success: true };
@@ -72,7 +86,7 @@ export async function createExpense(data: {
 export async function deleteExpense(expenseId: number) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  await pool.query("DELETE FROM financial_transactions WHERE id = $1 AND type = 'expense'", [expenseId]);
+  await prisma.financial_transactions.deleteMany({ where: { id: expenseId, type: 'expense' } });
   revalidatePath('/finance/expenses');
   revalidatePath('/finance');
   return { success: true };
@@ -81,47 +95,52 @@ export async function deleteExpense(expenseId: number) {
 export async function getExpenses(filters?: { date_from?: string; date_to?: string; category?: string }) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  let query = "SELECT ft.*, u.full_name as recorded_by_name FROM financial_transactions ft LEFT JOIN users u ON ft.recorded_by = u.id WHERE ft.type = 'expense'";
-  const params: string[] = [];
 
-  if (filters?.date_from) {
-    query += ` AND ft.transaction_date >= $${params.length + 1}`;
-    params.push(filters.date_from);
-  }
-  if (filters?.date_to) {
-    query += ` AND ft.transaction_date <= $${params.length + 1}`;
-    params.push(filters.date_to);
-  }
-  if (filters?.category) {
-    query += ` AND ft.category = $${params.length + 1}`;
-    params.push(filters.category);
-  }
-  query += ' ORDER BY ft.transaction_date DESC, ft.id DESC LIMIT 100';
+  const where: any = { type: 'expense' };
+  if (filters?.date_from) where.transaction_date = { ...where.transaction_date, gte: new Date(filters.date_from) };
+  if (filters?.date_to) where.transaction_date = { ...where.transaction_date, lte: new Date(filters.date_to) };
+  if (filters?.category) where.category = filters.category;
 
-  const result = await pool.query(query, params);
-  return result.rows as Array<Record<string, unknown>>;
+  const result = await prisma.financial_transactions.findMany({
+    where,
+    include: { users: true },
+    orderBy: [{ transaction_date: 'desc' }, { id: 'desc' }],
+    take: 100,
+  });
+  return result.map(r => ({ ...r, recorded_by_name: r.users?.full_name })) as Array<Record<string, unknown>>;
 }
 
 export async function getExpenseStats() {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  const totalExpensesResult = await pool.query("SELECT COALESCE(SUM(amount),0) as t FROM financial_transactions WHERE type='expense'");
-  const monthExpensesResult = await pool.query("SELECT COALESCE(SUM(amount),0) as t FROM financial_transactions WHERE type='expense' AND EXTRACT(MONTH FROM transaction_date)=EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM transaction_date)=EXTRACT(YEAR FROM CURRENT_DATE)");
-  const todayExpensesResult = await pool.query("SELECT COALESCE(SUM(amount),0) as t FROM financial_transactions WHERE type='expense' AND DATE(transaction_date)=CURRENT_DATE");
-  const todayCountResult = await pool.query("SELECT COUNT(*) as c FROM financial_transactions WHERE type='expense' AND DATE(transaction_date)=CURRENT_DATE");
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayEnd.getDate() + 1);
+
+  const [totalResult, monthResult, todayResult, todayCountResult] = await Promise.all([
+    prisma.financial_transactions.aggregate({ _sum: { amount: true }, where: { type: 'expense' } }),
+    prisma.financial_transactions.aggregate({ _sum: { amount: true }, where: { type: 'expense', transaction_date: { gte: monthStart, lt: monthEnd } } }),
+    prisma.financial_transactions.aggregate({ _sum: { amount: true }, where: { type: 'expense', transaction_date: { gte: todayStart, lt: todayEnd } } }),
+    prisma.financial_transactions.count({ where: { type: 'expense', transaction_date: { gte: todayStart, lt: todayEnd } } }),
+  ]);
+
   return {
-    totalExpenses: Number(totalExpensesResult.rows[0]?.t ?? 0),
-    monthExpenses: Number(monthExpensesResult.rows[0]?.t ?? 0),
-    todayExpenses: Number(todayExpensesResult.rows[0]?.t ?? 0),
-    todayCount: Number(todayCountResult.rows[0]?.c ?? 0),
+    totalExpenses: Number(totalResult._sum.amount) || 0,
+    monthExpenses: Number(monthResult._sum.amount) || 0,
+    todayExpenses: Number(todayResult._sum.amount) || 0,
+    todayCount: todayCountResult,
   };
 }
 
 export async function getExpenseCategories() {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  const result = await pool.query("SELECT name FROM expense_categories WHERE status='active' ORDER BY name");
-  return result.rows as Array<Record<string, unknown>>;
+  const result = await prisma.expense_categories.findMany({ where: { status: 'active' }, orderBy: { name: 'asc' } });
+  return result as Array<Record<string, unknown>>;
 }
 
 export async function createRefund(data: {
@@ -136,10 +155,18 @@ export async function createRefund(data: {
   if (!amount || amount <= 0) throw new Error('Amount must be greater than 0');
   if (!reason) throw new Error('Reason is required');
 
-  await pool.query(
-    "INSERT INTO financial_transactions (type, category, description, amount, reference_type, payment_method, transaction_date, recorded_by) VALUES ('refund', 'refund', $1, $2, $3, $4, CURRENT_DATE, $5)",
-    [`REFUND: ${reason}`, amount, reference_type || null, payment_method || 'cash', user.id]
-  );
+  await prisma.financial_transactions.create({
+    data: {
+      type: 'refund',
+      category: 'refund',
+      description: `REFUND: ${reason}`,
+      amount,
+      reference_type: reference_type || null,
+      payment_method: payment_method || 'cash',
+      transaction_date: new Date(),
+      recorded_by: user.id,
+    },
+  });
   revalidatePath('/finance/refunds');
   revalidatePath('/finance');
   return { success: true };
@@ -148,18 +175,24 @@ export async function createRefund(data: {
 export async function getRefunds() {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  const result = await pool.query("SELECT * FROM financial_transactions WHERE type='refund' ORDER BY created_at DESC LIMIT 50");
-  return result.rows as Array<Record<string, unknown>>;
+  const result = await prisma.financial_transactions.findMany({
+    where: { type: 'refund' },
+    orderBy: { created_at: 'desc' },
+    take: 50,
+  });
+  return result as Array<Record<string, unknown>>;
 }
 
 export async function getRefundStats() {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  const totalResult = await pool.query("SELECT COALESCE(SUM(amount),0) as c FROM financial_transactions WHERE type='refund'");
-  const countResult = await pool.query("SELECT COUNT(*) as c FROM financial_transactions WHERE type='refund'");
+  const [totalResult, countResult] = await Promise.all([
+    prisma.financial_transactions.aggregate({ _sum: { amount: true }, where: { type: 'refund' } }),
+    prisma.financial_transactions.count({ where: { type: 'refund' } }),
+  ]);
   return {
-    totalRefunds: Number(totalResult.rows[0]?.c ?? 0),
-    refundCount: Number(countResult.rows[0]?.c ?? 0),
+    totalRefunds: Number(totalResult._sum.amount) || 0,
+    refundCount: countResult,
   };
 }
 
@@ -179,16 +212,31 @@ export async function createUtilityBill(data: {
   if (!bill_month) throw new Error('Bill month is required');
   if (!amount || amount <= 0) throw new Error('Amount must be greater than 0');
 
-  await pool.query(
-    'INSERT INTO utility_bills (utility_type, provider, account_number, bill_month, amount, due_date, notes, recorded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-    [utility_type, provider || null, account_number || null, bill_month, amount, due_date || null, notes || null, user.id]
-  );
+  await prisma.utility_bills.create({
+    data: {
+      utility_type,
+      provider: provider || null,
+      account_number: account_number || null,
+      bill_month,
+      amount,
+      due_date: due_date ? new Date(due_date) : null,
+      notes: notes || null,
+      recorded_by: user.id,
+    },
+  });
 
   const desc = `${utility_type.charAt(0).toUpperCase() + utility_type.slice(1)} bill - ${provider || ''} (${bill_month})`;
-  await pool.query(
-    "INSERT INTO financial_transactions (type, category, description, amount, payment_method, transaction_date, recorded_by) VALUES ('expense',$1,$2,$3, 'cash', CURRENT_DATE, $4)",
-    [utility_type.toLowerCase(), desc, amount, user.id]
-  );
+  await prisma.financial_transactions.create({
+    data: {
+      type: 'expense',
+      category: utility_type.toLowerCase(),
+      description: desc,
+      amount,
+      payment_method: 'cash',
+      transaction_date: new Date(),
+      recorded_by: user.id,
+    },
+  });
 
   revalidatePath('/finance/utilities');
   revalidatePath('/finance');
@@ -198,7 +246,10 @@ export async function createUtilityBill(data: {
 export async function markUtilityBillPaid(billId: number, receiptNumber: string) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  await pool.query("UPDATE utility_bills SET status='paid', paid_date=CURRENT_DATE, receipt_number=$1 WHERE id=$2", [receiptNumber || null, billId]);
+  await prisma.utility_bills.update({
+    where: { id: billId },
+    data: { status: 'paid', paid_date: new Date(), receipt_number: receiptNumber || null },
+  });
   revalidatePath('/finance/utilities');
   return { success: true };
 }
@@ -206,7 +257,7 @@ export async function markUtilityBillPaid(billId: number, receiptNumber: string)
 export async function deleteUtilityBill(billId: number) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  await pool.query('DELETE FROM utility_bills WHERE id = $1', [billId]);
+  await prisma.utility_bills.delete({ where: { id: billId } });
   revalidatePath('/finance/utilities');
   return { success: true };
 }
@@ -214,29 +265,44 @@ export async function deleteUtilityBill(billId: number) {
 export async function getUtilityBills(filter?: string) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  let query = 'SELECT ub.*, u.username as recorded_by_name FROM utility_bills ub LEFT JOIN users u ON ub.recorded_by = u.id';
-  const params: string[] = [];
 
-  if (filter && filter !== 'all') {
-    query += ` WHERE ub.status = $${params.length + 1}`;
-    params.push(filter);
-  }
-  query += ' ORDER BY ub.bill_month DESC, ub.created_at DESC LIMIT 50';
+  const where: any = {};
+  if (filter && filter !== 'all') where.status = filter;
 
-  const result = await pool.query(query, params);
-  return result.rows as Array<Record<string, unknown>>;
+  const result = await prisma.utility_bills.findMany({
+    where,
+    orderBy: [{ bill_month: 'desc' }, { created_at: 'desc' }],
+    take: 50,
+  });
+
+  const userIds = [...new Set(result.map(r => r.recorded_by).filter(Boolean))] as number[];
+  const users = userIds.length > 0 ? await prisma.users.findMany({ where: { id: { in: userIds } } }) : [];
+  const userMap = new Map(users.map(u => [u.id, u]));
+
+  return result.map(r => ({
+    ...r,
+    recorded_by_name: r.recorded_by ? userMap.get(r.recorded_by)?.username ?? null : null,
+  })) as Array<Record<string, unknown>>;
 }
 
 export async function getUtilityStats() {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  const pendingResult = await pool.query("SELECT COALESCE(SUM(amount),0) as t FROM utility_bills WHERE status='pending'");
-  const paidMonthResult = await pool.query("SELECT COALESCE(SUM(amount),0) as t FROM utility_bills WHERE status='paid' AND EXTRACT(MONTH FROM paid_date) = EXTRACT(MONTH FROM CURRENT_DATE)");
-  const pendingCountResult = await pool.query("SELECT COUNT(*) as c FROM utility_bills WHERE status='pending'");
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  const [pendingResult, paidMonthResult, pendingCountResult] = await Promise.all([
+    prisma.utility_bills.aggregate({ _sum: { amount: true }, where: { status: 'pending' } }),
+    prisma.utility_bills.aggregate({ _sum: { amount: true }, where: { status: 'paid', paid_date: { gte: monthStart, lt: monthEnd } } }),
+    prisma.utility_bills.count({ where: { status: 'pending' } }),
+  ]);
+
   return {
-    pendingTotal: Number(pendingResult.rows[0]?.t ?? 0),
-    paidThisMonth: Number(paidMonthResult.rows[0]?.t ?? 0),
-    pendingCount: Number(pendingCountResult.rows[0]?.c ?? 0),
+    pendingTotal: Number(pendingResult._sum.amount) || 0,
+    paidThisMonth: Number(paidMonthResult._sum.amount) || 0,
+    pendingCount: pendingCountResult,
   };
 }
 
@@ -254,19 +320,32 @@ export async function createWage(data: {
   if (!amount || amount <= 0) throw new Error('Amount must be greater than 0');
   if (!pay_date) throw new Error('Pay date is required');
 
-  await pool.query(
-    'INSERT INTO staff_wages (staff_id, amount, pay_date, payment_method, notes, created_by) VALUES ($1,$2,$3,$4,$5,$6)',
-    [staff_id, amount, pay_date, payment_method || 'cash', notes || null, user.id]
-  );
+  await prisma.staff_wages.create({
+    data: {
+      staff_id,
+      amount,
+      pay_date: new Date(pay_date),
+      payment_method: payment_method || 'cash',
+      notes: notes || null,
+      created_by: user.id,
+    },
+  });
 
-  const staffResult = await pool.query('SELECT full_name FROM staff WHERE id = $1', [staff_id]);
-  const staffName = staffResult.rows[0]?.full_name ?? 'Staff';
+  const staff = await prisma.staff.findUnique({ where: { id: staff_id } });
+  const staffName = staff?.full_name ?? 'Staff';
   const dbMethod = payment_method === 'momo' ? 'mobile_money' : payment_method === 'airtel_money' ? 'mobile_money' : payment_method === 'bank' ? 'bank_transfer' : 'cash';
   const desc = `Wages - ${staffName}`;
-  await pool.query(
-    "INSERT INTO financial_transactions (type, category, description, amount, payment_method, transaction_date, recorded_by) VALUES ('expense','wages',$1,$2,$3,CURRENT_DATE,$4)",
-    [desc, amount, dbMethod, user.id]
-  );
+  await prisma.financial_transactions.create({
+    data: {
+      type: 'expense',
+      category: 'wages',
+      description: desc,
+      amount,
+      payment_method: dbMethod,
+      transaction_date: new Date(),
+      recorded_by: user.id,
+    },
+  });
 
   revalidatePath('/finance/wages');
   revalidatePath('/finance');
@@ -277,29 +356,58 @@ export async function getWages(filters?: { month?: string; method?: string }) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
   const month = filters?.month || new Date().toISOString().slice(0, 7);
-  let query = `SELECT sw.*, s.full_name, s.position FROM staff_wages sw JOIN staff s ON sw.staff_id = s.id WHERE TO_CHAR(sw.pay_date, 'YYYY-MM') = $1`;
-  const params: string[] = [month];
+  const monthStart = new Date(`${month}-01`);
+  const monthEnd = new Date(monthStart);
+  monthEnd.setMonth(monthEnd.getMonth() + 1);
 
-  if (filters?.method) {
-    query += ` AND sw.payment_method = $${params.length + 1}`;
-    params.push(filters.method);
-  }
-  query += ' ORDER BY sw.pay_date DESC';
+  const where: any = { pay_date: { gte: monthStart, lt: monthEnd } };
+  if (filters?.method) where.payment_method = filters.method;
 
-  const result = await pool.query(query, params);
-  return result.rows as Array<Record<string, unknown>>;
+  const result = await prisma.staff_wages.findMany({
+    where,
+    include: { staff: true },
+    orderBy: { pay_date: 'desc' },
+  });
+  return result.map(r => ({
+    ...r,
+    full_name: r.staff?.full_name,
+    position: r.staff?.position,
+  })) as Array<Record<string, unknown>>;
 }
 
 export async function getWageStats(month: string) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  const totalPaidResult = await pool.query("SELECT COALESCE(SUM(amount),0) as t FROM staff_wages WHERE TO_CHAR(pay_date, 'YYYY-MM') = $1", [month]);
-  const staffCountResult = await pool.query("SELECT COUNT(DISTINCT staff_id) as c FROM staff_wages WHERE TO_CHAR(pay_date, 'YYYY-MM') = $1", [month]);
-  const methodStatsResult = await pool.query("SELECT payment_method, COUNT(*) as count, SUM(amount) as total FROM staff_wages WHERE TO_CHAR(pay_date, 'YYYY-MM') = $1 GROUP BY payment_method", [month]);
+
+  const monthStart = new Date(`${month}-01`);
+  const monthEnd = new Date(monthStart);
+  monthEnd.setMonth(monthEnd.getMonth() + 1);
+
+  const [totalPaidResult, staffCountResult, methodStatsResult] = await Promise.all([
+    prisma.staff_wages.aggregate({
+      _sum: { amount: true },
+      where: { pay_date: { gte: monthStart, lt: monthEnd } },
+    }),
+    prisma.staff_wages.groupBy({
+      by: ['staff_id'],
+      where: { pay_date: { gte: monthStart, lt: monthEnd } },
+    }),
+    prisma.staff_wages.groupBy({
+      by: ['payment_method'],
+      where: { pay_date: { gte: monthStart, lt: monthEnd } },
+      _count: { id: true },
+      _sum: { amount: true },
+    }),
+  ]);
+
   return {
-    totalPaid: Number(totalPaidResult.rows[0]?.t ?? 0),
-    staffCount: Number(staffCountResult.rows[0]?.c ?? 0),
-    methodStats: methodStatsResult.rows as Array<Record<string, unknown>>,
+    totalPaid: Number(totalPaidResult._sum.amount) || 0,
+    staffCount: staffCountResult.length,
+    methodStats: methodStatsResult.map(m => ({
+      payment_method: m.payment_method,
+      count: m._count.id,
+      total: Number(m._sum.amount) || 0,
+    })),
   };
 }
 
@@ -307,7 +415,9 @@ export async function createExpenseCategory(data: { name: string; description: s
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
   if (!data.name) throw new Error('Category name is required');
-  await pool.query('INSERT INTO expense_categories (name, description) VALUES ($1, $2)', [data.name, data.description || null]);
+  await prisma.expense_categories.create({
+    data: { name: data.name, description: data.description || null },
+  });
   revalidatePath('/finance/expense-categories');
   return { success: true };
 }
@@ -315,7 +425,10 @@ export async function createExpenseCategory(data: { name: string; description: s
 export async function updateExpenseCategory(categoryId: number, data: { name: string; description: string; status: string }) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  await pool.query('UPDATE expense_categories SET name=$1, description=$2, status=$3 WHERE id=$4', [data.name, data.description || null, data.status || 'active', categoryId]);
+  await prisma.expense_categories.update({
+    where: { id: categoryId },
+    data: { name: data.name, description: data.description || null, status: data.status || 'active' },
+  });
   revalidatePath('/finance/expense-categories');
   return { success: true };
 }
@@ -323,7 +436,7 @@ export async function updateExpenseCategory(categoryId: number, data: { name: st
 export async function deleteExpenseCategory(categoryId: number) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  await pool.query('DELETE FROM expense_categories WHERE id = $1', [categoryId]);
+  await prisma.expense_categories.delete({ where: { id: categoryId } });
   revalidatePath('/finance/expense-categories');
   return { success: true };
 }
@@ -331,13 +444,13 @@ export async function deleteExpenseCategory(categoryId: number) {
 export async function getAllExpenseCategories() {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
-  const result = await pool.query(`
+  const result = await prisma.$queryRawUnsafe(`
     SELECT ec.*,
     (SELECT COUNT(*) FROM financial_transactions WHERE type = 'expense' AND description LIKE ('%' || ec.name || '%')) as usage_count,
     (SELECT COALESCE(SUM(amount),0) FROM financial_transactions WHERE type = 'expense' AND description LIKE ('%' || ec.name || '%') AND EXTRACT(MONTH FROM transaction_date) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM transaction_date) = EXTRACT(YEAR FROM CURRENT_DATE)) as month_total
     FROM expense_categories ec ORDER BY ec.name
   `);
-  return result.rows as Array<Record<string, unknown>>;
+  return result as Array<Record<string, unknown>>;
 }
 
 export async function updateProfile(data: { full_name: string; current_password?: string; new_password?: string }) {
@@ -350,15 +463,21 @@ export async function updateProfile(data: { full_name: string; current_password?
     if (!current_password) throw new Error('Current password is required to change password');
     if (new_password.length < 4) throw new Error('Password must be at least 4 characters');
 
-    const userResult = await pool.query('SELECT password FROM users WHERE id = $1', [user.id]);
+    const userResult = await prisma.users.findUnique({ where: { id: user.id } });
     const bcrypt = await import('bcryptjs');
-    const valid = await bcrypt.compare(current_password, (userResult.rows[0]?.password as string) || '');
+    const valid = await bcrypt.compare(current_password, userResult?.password || '');
     if (!valid) throw new Error('Current password is incorrect');
 
     const hashed = await bcrypt.hash(new_password, 10);
-    await pool.query('UPDATE users SET full_name = $1, password = $2 WHERE id = $3', [full_name, hashed, user.id]);
+    await prisma.users.update({
+      where: { id: user.id },
+      data: { full_name, password: hashed },
+    });
   } else {
-    await pool.query('UPDATE users SET full_name = $1 WHERE id = $2', [full_name, user.id]);
+    await prisma.users.update({
+      where: { id: user.id },
+      data: { full_name },
+    });
   }
 
   revalidatePath('/profile');

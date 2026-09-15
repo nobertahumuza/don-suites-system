@@ -1,38 +1,68 @@
 'use server';
 
-import pool from '@/lib/db';
+import prisma from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function getParkingStats() {
-  const parkedCountResult = await pool.query("SELECT COUNT(*) as c FROM vehicle_parking WHERE status='parked'");
-  const todayCountResult = await pool.query("SELECT COUNT(*) as c FROM vehicle_parking WHERE DATE(check_in) = CURRENT_DATE");
-  const todayRevenueResult = await pool.query("SELECT COALESCE(SUM(total_charge),0) as c FROM vehicle_parking WHERE DATE(check_out) = CURRENT_DATE AND total_charge > 0");
+  const [parkedCount, todayCount, todayRevenue] = await Promise.all([
+    prisma.vehicle_parking.count({ where: { status: 'parked' } }),
+    prisma.vehicle_parking.count({
+      where: {
+        check_in: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+      },
+    }),
+    prisma.vehicle_parking.aggregate({
+      _sum: { total_charge: true },
+      where: {
+        check_out: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        total_charge: { gt: 0 },
+      },
+    }),
+  ]);
 
   return {
-    parkedCount: Number(parkedCountResult.rows[0].c),
-    todayCount: Number(todayCountResult.rows[0].c),
-    todayRevenue: Number(todayRevenueResult.rows[0].c),
+    parkedCount,
+    todayCount,
+    todayRevenue: Number(todayRevenue._sum.total_charge ?? 0),
   };
 }
 
 export async function getParkingRecords(filter: string = 'parked') {
-  let query = '';
-  if (filter === 'parked') {
-    query = `SELECT vp.*, g.full_name as guest_name FROM vehicle_parking vp LEFT JOIN guests g ON vp.guest_id = g.id WHERE vp.status = 'parked' ORDER BY vp.check_in DESC`;
-  } else if (filter === 'departed') {
-    query = `SELECT vp.*, g.full_name as guest_name FROM vehicle_parking vp LEFT JOIN guests g ON vp.guest_id = g.id WHERE vp.status = 'departed' ORDER BY vp.check_out DESC LIMIT 50`;
-  } else {
-    query = `SELECT vp.*, g.full_name as guest_name FROM vehicle_parking vp LEFT JOIN guests g ON vp.guest_id = g.id ORDER BY vp.created_at DESC LIMIT 50`;
-  }
+  const orderBy =
+    filter === 'departed'
+      ? { check_out: 'desc' as const }
+      : filter === 'parked'
+        ? { check_in: 'desc' as const }
+        : { created_at: 'desc' as const };
 
-  const result = await pool.query(query);
-  return result.rows as any[];
+  const where =
+    filter === 'parked'
+      ? { status: 'parked' as const }
+      : filter === 'departed'
+        ? { status: 'departed' as const }
+        : {};
+
+  const take = filter === 'all' ? 50 : undefined;
+
+  const results = await prisma.vehicle_parking.findMany({
+    where,
+    orderBy,
+    take,
+    include: { users: { select: { full_name: true } } },
+  });
+
+  return results.map((r) => ({
+    ...r,
+    guest_name: null,
+  })) as any[];
 }
 
 export async function getGuests() {
-  const result = await pool.query('SELECT id, full_name, phone FROM guests ORDER BY full_name');
-  return result.rows as any[];
+  return prisma.guests.findMany({
+    select: { id: true, full_name: true, phone: true },
+    orderBy: { full_name: 'asc' },
+  });
 }
 
 export async function checkInVehicle(data: {
@@ -56,11 +86,22 @@ export async function checkInVehicle(data: {
   if (!owner_name) throw new Error('Owner name is required');
   if (!parking_spot) throw new Error('Parking spot is required');
 
-  await pool.query(
-    `INSERT INTO vehicle_parking (plate_number, vehicle_type, vehicle_make, color, owner_name, owner_phone, guest_id, parking_spot, check_in, parking_rate, notes, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11)`,
-    [plate_number.toUpperCase(), vehicle_type || 'sedan', vehicle_make || '', color || '', owner_name, owner_phone || '', guest_id || null, parking_spot, parking_rate || 5000, notes || '', user.id]
-  );
+  await prisma.vehicle_parking.create({
+    data: {
+      plate_number: plate_number.toUpperCase(),
+      vehicle_type: vehicle_type || 'sedan',
+      vehicle_make: vehicle_make || '',
+      color: color || '',
+      owner_name,
+      owner_phone: owner_phone || '',
+      guest_id: guest_id || null,
+      parking_spot,
+      check_in: new Date(),
+      parking_rate: parking_rate || 5000,
+      notes: notes || '',
+      created_by: user.id,
+    },
+  });
 
   revalidatePath('/parking');
   return { success: true };
@@ -70,24 +111,24 @@ export async function checkOutVehicle(id: number) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
 
-  const vehicleResult = await pool.query('SELECT * FROM vehicle_parking WHERE id = $1 AND status = $2', [id, 'parked']);
-  const vehicles = vehicleResult.rows as any[];
-  if (vehicles.length === 0) throw new Error('Vehicle not found or already checked out');
+  const vehicle = await prisma.vehicle_parking.findFirst({
+    where: { id, status: 'parked' },
+  });
+  if (!vehicle) throw new Error('Vehicle not found or already checked out');
 
-  const v = vehicles[0];
   let charge = 0;
-  if (v.parking_rate > 0) {
-    const ci = new Date(v.check_in);
+  if (vehicle.parking_rate && Number(vehicle.parking_rate) > 0) {
+    const ci = new Date(vehicle.check_in!);
     const co = new Date();
     let hours = Math.ceil((co.getTime() - ci.getTime()) / (1000 * 60 * 60));
     if (hours < 1) hours = 1;
-    charge = v.parking_rate * hours;
+    charge = Number(vehicle.parking_rate) * hours;
   }
 
-  await pool.query(
-    "UPDATE vehicle_parking SET status='departed', check_out=NOW(), total_charge=$1 WHERE id=$2 AND status='parked'",
-    [charge, id]
-  );
+  await prisma.vehicle_parking.updateMany({
+    where: { id, status: 'parked' },
+    data: { status: 'departed', check_out: new Date(), total_charge: charge },
+  });
 
   revalidatePath('/parking');
   return { success: true };
@@ -97,7 +138,7 @@ export async function deleteParkingRecord(id: number) {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
 
-  await pool.query('DELETE FROM vehicle_parking WHERE id = $1', [id]);
+  await prisma.vehicle_parking.delete({ where: { id } });
   revalidatePath('/parking');
   return { success: true };
 }

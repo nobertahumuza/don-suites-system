@@ -1,4 +1,6 @@
-import pool from '@/lib/db';
+'use server';
+
+import prisma from '@/lib/db';
 import { createRoom, updateRoom } from '@/lib/actions/booking';
 import { redirect } from 'next/navigation';
 import RoomForm from './room-form';
@@ -11,15 +13,18 @@ export default async function NewRoomPage({
   const params = await searchParams;
   const editId = params.edit ? parseInt(params.edit) : 0;
 
-  const { rows: types } = await pool.query('SELECT * FROM room_types ORDER BY name ASC');
+  const types = await prisma.room_types.findMany({
+    orderBy: { name: 'asc' },
+  });
 
   let room = null;
   if (editId > 0) {
-    const { rows: rooms } = await pool.query('SELECT * FROM rooms WHERE id = $1', [editId]);
-    if (rooms.length === 0) {
+    room = await prisma.rooms.findUnique({
+      where: { id: editId },
+    });
+    if (!room) {
       redirect('/rooms');
     }
-    room = rooms[0];
   }
 
   return (

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
+import prisma from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,63 +13,67 @@ export async function GET(request: Request) {
     const filterDate = searchParams.get('date') || '';
     const filterSearch = searchParams.get('search') || '';
     const perPage = 30;
-    const offset = (page - 1) * perPage;
+    const skip = (page - 1) * perPage;
 
-    const conditions = ['1=1'];
-    const params: any[] = [];
+    const where: any = {};
 
     if (filterUser) {
-      conditions.push(`al.user_id = $${params.length + 1}`);
-      params.push(parseInt(filterUser));
+      where.user_id = parseInt(filterUser);
     }
     if (filterEntity) {
-      conditions.push(`al.entity_type = $${params.length + 1}`);
-      params.push(filterEntity);
+      where.entity_type = filterEntity;
     }
     if (filterAction) {
-      conditions.push(`al.action = $${params.length + 1}`);
-      params.push(filterAction);
+      where.action = filterAction;
     }
     if (filterDate) {
-      conditions.push(`DATE(al.created_at) = $${params.length + 1}`);
-      params.push(filterDate);
+      const date = new Date(filterDate);
+      const nextDate = new Date(filterDate);
+      nextDate.setDate(nextDate.getDate() + 1);
+      where.created_at = { gte: date, lt: nextDate };
     }
     if (filterSearch) {
-      conditions.push(`(al.action LIKE $${params.length + 1} OR al.entity_type LIKE $${params.length + 2})`);
-      params.push(`%${filterSearch}%`, `%${filterSearch}%`);
+      where.OR = [
+        { action: { contains: filterSearch, mode: 'insensitive' } },
+        { entity_type: { contains: filterSearch, mode: 'insensitive' } },
+      ];
     }
 
-    const where = conditions.join(' AND ');
+    const [total, logs, users, entityTypes, actionTypes] = await Promise.all([
+      prisma.activity_log.count({ where }),
+      prisma.activity_log.findMany({
+        where,
+        include: { users: { select: { full_name: true, username: true } } },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: perPage,
+      }),
+      prisma.users.findMany({
+        select: { id: true, full_name: true, username: true },
+        orderBy: { full_name: 'asc' },
+      }),
+      prisma.activity_log.findMany({
+        select: { entity_type: true },
+        distinct: ['entity_type'],
+        orderBy: { entity_type: 'asc' },
+      }),
+      prisma.activity_log.findMany({
+        select: { action: true },
+        distinct: ['action'],
+        orderBy: { action: 'asc' },
+      }),
+    ]);
 
-    const countResult = await pool.query(
-      `SELECT COUNT(*) as c FROM activity_log al WHERE ${where}`,
-      params
-    );
-    const total = Number(countResult.rows[0].c);
     const totalPages = Math.max(1, Math.ceil(total / perPage));
 
-    const logResult = await pool.query(
-      `SELECT al.*, u.full_name, u.username
-       FROM activity_log al
-       LEFT JOIN users u ON al.user_id = u.id
-       WHERE ${where}
-       ORDER BY al.created_at DESC
-       LIMIT ${perPage} OFFSET ${offset}`,
-      params
-    );
-
-    const userResult = await pool.query('SELECT id, full_name, username FROM users ORDER BY full_name');
-    const entityResult = await pool.query('SELECT DISTINCT entity_type FROM activity_log ORDER BY entity_type');
-    const actionResult = await pool.query('SELECT DISTINCT action FROM activity_log ORDER BY action');
-
     return NextResponse.json({
-      logs: logResult.rows,
+      logs,
       total,
       totalPages,
       page,
-      users: userResult.rows,
-      entityTypes: entityResult.rows,
-      actionTypes: actionResult.rows,
+      users,
+      entityTypes,
+      actionTypes,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -2,8 +2,8 @@
 
 import { useState, useRef } from 'react';
 
-function formatCurrency(amount: number) {
-  return 'UGX ' + Number(amount).toLocaleString();
+function formatCurrency(amount: number | { toNumber: () => number } | null | undefined) {
+  return 'UGX ' + Number(amount ?? 0).toLocaleString();
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -14,8 +14,8 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-type Category = { id: number; name: string; description?: string; sort_order: number; item_count: number };
-type Item = { id: number; name: string; category_id: number; category_name?: string; price: number; stock_quantity: number; status: string; image?: string };
+type Category = { id: number; name: string; description?: string | null; sort_order?: number | null; item_count: number; _count?: unknown; created_at?: unknown };
+type Item = { id: number; name: string; category_id: number | null; category_name?: string | null; price: number | { toNumber: () => number } | null; stock_quantity: number | null; status: string | null; image?: string | null; created_at?: unknown; category?: string | null; fb_categories?: unknown };
 
 export default function FbItemsView({
   items,
@@ -44,7 +44,7 @@ export default function FbItemsView({
 
   const totalItems = items.length;
   const activeItems = items.filter((i) => i.status === 'active').length;
-  const totalValue = items.reduce((sum, i) => sum + Number(i.price) * i.stock_quantity, 0);
+  const totalValue = items.reduce((sum, i) => sum + Number(i.price) * (i.stock_quantity ?? 0), 0);
 
   function openEditModal(item: Item) {
     setEditItem(item);
@@ -157,13 +157,13 @@ export default function FbItemsView({
                     </td>
                     <td className="px-4 py-3 font-extrabold text-xs" style={{ color: '#c9a96e' }}>{formatCurrency(item.price)}</td>
                     <td className="px-4 py-3">
-                      {item.stock_quantity <= 5 ? (
-                        <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[11px] font-bold">{item.stock_quantity} low</span>
+                      {(item.stock_quantity ?? 0) <= 5 ? (
+                        <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[11px] font-bold">{item.stock_quantity ?? 0} low</span>
                       ) : (
                         <span className="text-xs text-gray-600">{item.stock_quantity}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
+                    <td className="px-4 py-3"><StatusBadge status={item.status ?? 'active'} /></td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button
@@ -261,7 +261,7 @@ export default function FbItemsView({
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Price (UGX) *</label>
-                <input type="number" name="price" step="100" min="0" required defaultValue={editItem?.price ?? ''} className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm" />
+                <input type="number" name="price" step="100" min="0" required defaultValue={editItem ? Number(editItem.price ?? 0) : ''} className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

@@ -1,0 +1,566 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model activity_log {
+  id          Int       @id @default(autoincrement())
+  action      String    @db.VarChar(50)
+  entity_type String    @db.VarChar(50)
+  entity_id   Int?
+  user_id     Int?
+  details     String?
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  users       users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([created_at], map: "idx_al_created")
+  @@index([entity_type, entity_id], map: "idx_al_entity")
+  @@index([user_id], map: "idx_al_user")
+}
+
+model audit_logs {
+  id         Int       @id @default(autoincrement())
+  user_id    Int?
+  action     String    @db.VarChar(50)
+  table_name String?   @db.VarChar(50)
+  record_id  Int?
+  old_values String?
+  new_values String?
+  ip_address String?   @db.VarChar(45)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([created_at], map: "idx_audit_created")
+}
+
+model bookings {
+  id                 Int         @id @default(autoincrement())
+  guest_id           Int?
+  room_id            Int?
+  check_in_date      DateTime    @db.Date
+  check_out_date     DateTime    @db.Date
+  actual_check_in    DateTime?   @db.Timestamp(6)
+  actual_check_out   DateTime?   @db.Timestamp(6)
+  total_amount       Decimal     @db.Decimal(12, 2)
+  amount_paid        Decimal?    @default(0.00) @db.Decimal(12, 2)
+  deposit_amount     Decimal?    @default(0.00) @db.Decimal(12, 2)
+  deposit_paid       Decimal?    @default(0.00) @db.Decimal(12, 2)
+  status             String?     @default("pending") @db.VarChar(20)
+  payment_method     String?     @default("cash") @db.VarChar(20)
+  payment_status     String?     @default("unpaid") @db.VarChar(20)
+  notes              String?
+  discount_id        Int?
+  discount_amount    Decimal?    @default(0.00) @db.Decimal(12, 2)
+  nights             Int?        @default(1)
+  additional_charges Decimal?    @default(0.00) @db.Decimal(12, 2)
+  discount           Decimal?    @default(0.00) @db.Decimal(12, 2)
+  created_by         Int?
+  created_at         DateTime?   @default(now()) @db.Timestamp(6)
+  users              users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  guests             guests?     @relation(fields: [guest_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rooms              rooms?      @relation(fields: [room_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  fb_orders          fb_orders[]
+}
+
+model camping_bookings {
+  id          Int       @id @default(autoincrement())
+  guest_name  String    @db.VarChar(100)
+  guest_phone String?   @db.VarChar(20)
+  num_guests  Int?      @default(1)
+  check_in    DateTime  @db.Date
+  check_out   DateTime  @db.Date
+  amount_paid Decimal?  @default(0.00) @db.Decimal(12, 2)
+  status      String?   @default("pending") @db.VarChar(20)
+  notes       String?
+  created_by  Int?
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  users       users?    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model conference_bookings {
+  id               Int              @id @default(autoincrement())
+  hall_id          Int
+  guest_name       String           @db.VarChar(100)
+  guest_phone      String?          @db.VarChar(20)
+  event_date       DateTime         @db.Date
+  event_type       String?          @db.VarChar(100)
+  start_time       DateTime?        @db.Time(6)
+  end_time         DateTime?        @db.Time(6)
+  purpose          String?          @db.VarChar(255)
+  total_amount     Decimal?         @default(0.00) @db.Decimal(12, 2)
+  amount_paid      Decimal?         @default(0.00) @db.Decimal(12, 2)
+  status           String?          @default("pending") @db.VarChar(20)
+  notes            String?
+  created_by       Int?
+  created_at       DateTime?        @default(now()) @db.Timestamp(6)
+  users            users?           @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  conference_halls conference_halls @relation(fields: [hall_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model conference_halls {
+  id                  Int                   @id @default(autoincrement())
+  name                String                @db.VarChar(100)
+  capacity            Int?
+  price_per_day       Decimal               @db.Decimal(12, 2)
+  type                String?               @db.VarChar(50)
+  status              String?               @default("available") @db.VarChar(20)
+  description         String?
+  created_at          DateTime?             @default(now()) @db.Timestamp(6)
+  conference_bookings conference_bookings[]
+}
+
+model discounts {
+  id             Int       @id @default(autoincrement())
+  code           String    @unique @db.VarChar(30)
+  description    String?
+  discount_type  String?   @default("percentage") @db.VarChar(20)
+  discount_value Decimal   @db.Decimal(10, 2)
+  type           String?   @default("percentage") @db.VarChar(20)
+  value          Decimal?  @default(0) @db.Decimal(10, 2)
+  min_amount     Decimal?  @default(0) @db.Decimal(10, 2)
+  max_uses       Int?      @default(0)
+  used_count     Int?      @default(0)
+  applies_to     String?   @default("all") @db.VarChar(20)
+  valid_from     DateTime  @db.Date
+  valid_until    DateTime  @db.Date
+  status         String?   @default("active") @db.VarChar(20)
+  created_by     Int?
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  users          users?    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([code], map: "idx_disc_code")
+  @@index([status], map: "idx_disc_status")
+}
+
+model email_logs {
+  id        Int       @id @default(autoincrement())
+  recipient String    @db.VarChar(255)
+  subject   String    @db.VarChar(500)
+  status    String?   @default("sent") @db.VarChar(20)
+  sent_at   DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model email_settings {
+  id            Int       @id @default(autoincrement())
+  setting_key   String    @unique @db.VarChar(100)
+  setting_value String?
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model expense_categories {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique @db.VarChar(100)
+  description String?
+  status      String?   @default("active") @db.VarChar(20)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model fb_categories {
+  id          Int        @id @default(autoincrement())
+  name        String     @db.VarChar(100)
+  description String?
+  sort_order  Int?       @default(0)
+  created_at  DateTime?  @default(now()) @db.Timestamp(6)
+  fb_items    fb_items[]
+}
+
+model fb_items {
+  id             Int              @id @default(autoincrement())
+  name           String           @db.VarChar(100)
+  image          String?          @db.VarChar(255)
+  category_id    Int?
+  category       String?          @db.VarChar(50)
+  price          Decimal          @db.Decimal(12, 2)
+  stock_quantity Int?             @default(0)
+  status         String?          @default("active") @db.VarChar(20)
+  created_at     DateTime?        @default(now()) @db.Timestamp(6)
+  fb_categories  fb_categories?   @relation(fields: [category_id], references: [id], onUpdate: NoAction)
+  fb_order_items fb_order_items[]
+}
+
+model fb_order_items {
+  id          Int       @id @default(autoincrement())
+  order_id    Int
+  fb_item_id  Int
+  quantity    Int?      @default(1)
+  unit_price  Decimal   @db.Decimal(12, 2)
+  total_price Decimal   @db.Decimal(12, 2)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  fb_items    fb_items  @relation(fields: [fb_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  fb_orders   fb_orders @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model fb_orders {
+  id                     Int              @id @default(autoincrement())
+  booking_id             Int?
+  guest_id               Int?
+  guest_name             String?          @db.VarChar(100)
+  room_number            String?          @db.VarChar(10)
+  order_type             String?          @default("dine_in") @db.VarChar(20)
+  room_service_surcharge Decimal?         @default(0.00) @db.Decimal(12, 2)
+  subtotal               Decimal          @db.Decimal(12, 2)
+  discount_id            Int?
+  discount_amount        Decimal?         @default(0.00) @db.Decimal(12, 2)
+  total                  Decimal          @db.Decimal(12, 2)
+  payment_status         String?          @default("pending") @db.VarChar(20)
+  status                 String?          @default("pending") @db.VarChar(20)
+  served_by              Int?
+  created_at             DateTime?        @default(now()) @db.Timestamp(6)
+  fb_order_items         fb_order_items[]
+  bookings               bookings?        @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  guests                 guests?          @relation(fields: [guest_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                  users?           @relation(fields: [served_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model financial_transactions {
+  id               Int       @id @default(autoincrement())
+  type             String    @db.VarChar(20)
+  category         String    @db.VarChar(50)
+  description      String    @db.VarChar(255)
+  amount           Decimal   @db.Decimal(12, 2)
+  reference_type   String?   @db.VarChar(50)
+  reference_id     Int?
+  payment_method   String?   @default("cash") @db.VarChar(20)
+  transaction_date DateTime  @db.Date
+  recorded_by      Int?
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+  users            users?    @relation(fields: [recorded_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model garden_bookings {
+  id           Int       @id @default(autoincrement())
+  guest_id     Int?
+  guest_name   String    @db.VarChar(100)
+  guest_phone  String?   @db.VarChar(20)
+  event_date   DateTime  @db.Date
+  event_type   String?   @db.VarChar(100)
+  start_time   DateTime? @db.Time(6)
+  end_time     DateTime? @db.Time(6)
+  purpose      String?   @db.VarChar(255)
+  total_amount Decimal?  @default(0.00) @db.Decimal(12, 2)
+  amount_paid  Decimal?  @default(0.00) @db.Decimal(12, 2)
+  status       String?   @default("pending") @db.VarChar(20)
+  notes        String?
+  created_by   Int?
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  users        users?    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model guest_searches {
+  id          Int       @id @default(autoincrement())
+  query       String    @db.VarChar(255)
+  searched_by Int?
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  users       users?    @relation(fields: [searched_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model guests {
+  id             Int         @id @default(autoincrement())
+  full_name      String      @db.VarChar(100)
+  phone          String?     @db.VarChar(20)
+  email          String?     @db.VarChar(100)
+  sex            String?     @db.VarChar(10)
+  age            Int?
+  id_type        String?     @default("national_id") @db.VarChar(20)
+  id_number      String?     @db.VarChar(50)
+  nationality    String?     @db.VarChar(50)
+  vehicle_number String?     @db.VarChar(20)
+  registered_by  Int?
+  created_at     DateTime?   @default(now()) @db.Timestamp(6)
+  bookings       bookings[]
+  fb_orders      fb_orders[]
+  users          users?      @relation(fields: [registered_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model inventory_categories {
+  id              Int               @id @default(autoincrement())
+  name            String            @db.VarChar(100)
+  description     String?
+  created_at      DateTime?         @default(now()) @db.Timestamp(6)
+  inventory_items inventory_items[]
+}
+
+model inventory_items {
+  id                   Int                   @id @default(autoincrement())
+  name                 String                @db.VarChar(100)
+  category_id          Int?
+  quantity_in_stock    Decimal?              @default(0.00) @db.Decimal(12, 2)
+  unit                 String?               @default("piece") @db.VarChar(30)
+  reorder_level        Decimal?              @default(10.00) @db.Decimal(12, 2)
+  status               String?               @default("active") @db.VarChar(20)
+  created_at           DateTime?             @default(now()) @db.Timestamp(6)
+  inventory_categories inventory_categories? @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  stock_transactions   stock_transactions[]
+}
+
+model notifications {
+  id             Int       @id @default(autoincrement())
+  title          String    @db.VarChar(255)
+  message        String
+  type           String?   @default("info") @db.VarChar(50)
+  priority       String?   @default("medium") @db.VarChar(20)
+  reference_id   Int?
+  reference_type String?   @db.VarChar(50)
+  is_read        Boolean?  @default(false)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model pa_hires {
+  id          Int       @id @default(autoincrement())
+  guest_name  String    @db.VarChar(100)
+  guest_phone String?   @db.VarChar(20)
+  equipment   String?   @db.VarChar(255)
+  event_date  DateTime  @db.Date
+  amount_paid Decimal?  @default(0.00) @db.Decimal(12, 2)
+  status      String?   @default("pending") @db.VarChar(20)
+  notes       String?
+  created_by  Int?
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  users       users?    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model price_changes {
+  id            Int       @id @default(autoincrement())
+  item_type     String    @db.VarChar(50)
+  item_id       Int
+  item_name     String?   @db.VarChar(255)
+  old_price     Decimal?  @db.Decimal(12, 2)
+  new_price     Decimal?  @db.Decimal(12, 2)
+  change_reason String?
+  changed_by    Int?
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  users         users?    @relation(fields: [changed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([item_type, item_id], map: "idx_pc_item")
+}
+
+model pricing {
+  id             Int       @id @default(autoincrement())
+  item_name      String    @db.VarChar(100)
+  item_type      String    @db.VarChar(50)
+  price          Decimal   @db.Decimal(12, 2)
+  effective_date DateTime? @db.Date
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model room_types {
+  id                  Int                @id @default(autoincrement())
+  name                String             @db.VarChar(50)
+  price               Decimal            @db.Decimal(12, 2)
+  total_rooms         Int?               @default(0)
+  description         String?
+  cooking_space_price Decimal?           @default(0.00) @db.Decimal(12, 2)
+  created_at          DateTime?          @default(now()) @db.Timestamp(6)
+  rooms               rooms[]
+  seasonal_pricing    seasonal_pricing[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model rooms {
+  id           Int        @id @default(autoincrement())
+  room_number  String     @unique @db.VarChar(10)
+  room_type_id Int
+  status       String?    @default("available") @db.VarChar(20)
+  created_at   DateTime?  @default(now()) @db.Timestamp(6)
+  bookings     bookings[]
+  room_types   room_types @relation(fields: [room_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model seasonal_pricing {
+  id                  Int        @id @default(autoincrement())
+  room_type_id        Int
+  season_name         String     @db.VarChar(100)
+  start_date          DateTime   @db.Date
+  end_date            DateTime   @db.Date
+  price               Decimal    @db.Decimal(12, 2)
+  cooking_space_price Decimal?   @db.Decimal(12, 2)
+  created_at          DateTime?  @default(now()) @db.Timestamp(6)
+  room_types          room_types @relation(fields: [room_type_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model security_incidents {
+  id               Int       @id @default(autoincrement())
+  incident_type    String    @db.VarChar(50)
+  severity         String?   @default("low") @db.VarChar(20)
+  location         String?   @db.VarChar(100)
+  description      String
+  reported_by      String?   @db.VarChar(100)
+  reported_by_user Int?
+  status           String?   @default("open") @db.VarChar(20)
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+  users            users?    @relation(fields: [reported_by_user], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([created_at], map: "idx_si_created")
+  @@index([status], map: "idx_si_status")
+}
+
+model staff {
+  id            Int            @id @default(autoincrement())
+  full_name     String         @db.VarChar(100)
+  gender        String?        @db.VarChar(10)
+  phone         String?        @db.VarChar(20)
+  email         String?        @db.VarChar(100)
+  position      String         @db.VarChar(50)
+  department    String?        @db.VarChar(100)
+  contract_type String?        @default("permanent") @db.VarChar(20)
+  wage          Decimal?       @default(0.00) @db.Decimal(12, 2)
+  salary        Decimal?       @default(0.00) @db.Decimal(12, 2)
+  hire_date     DateTime?      @db.Date
+  status        String?        @default("active") @db.VarChar(20)
+  photo         String?        @db.VarChar(255)
+  created_at    DateTime?      @default(now()) @db.Timestamp(6)
+  staff_leave   staff_leave[]
+  staff_shifts  staff_shifts[]
+  staff_wages   staff_wages[]
+}
+
+model staff_leave {
+  id          Int       @id @default(autoincrement())
+  staff_id    Int
+  leave_type  String    @db.VarChar(50)
+  start_date  DateTime  @db.Date
+  end_date    DateTime  @db.Date
+  days        Int?      @default(1)
+  reason      String?
+  notes       String?
+  status      String?   @default("pending") @db.VarChar(20)
+  approved_by Int?
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  users       users?    @relation(fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff       staff     @relation(fields: [staff_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model staff_shifts {
+  id            Int       @id @default(autoincrement())
+  staff_id      Int
+  shift_date    DateTime  @db.Date
+  start_time    DateTime? @db.Time(6)
+  end_time      DateTime? @db.Time(6)
+  shift_time    String?   @db.VarChar(50)
+  break_minutes Int?      @default(0)
+  status        String?   @default("scheduled") @db.VarChar(20)
+  notes         String?
+  created_by    Int?
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  users         users?    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff         staff     @relation(fields: [staff_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model staff_wages {
+  id             Int       @id @default(autoincrement())
+  staff_id       Int
+  amount         Decimal   @db.Decimal(12, 2)
+  pay_date       DateTime? @db.Date
+  period         String?   @db.VarChar(50)
+  payment_method String?   @default("cash") @db.VarChar(20)
+  paid_by        Int?
+  created_by     Int?
+  notes          String?
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  staff          staff     @relation(fields: [staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model stock_transactions {
+  id              Int             @id @default(autoincrement())
+  item_id         Int
+  type            String          @db.VarChar(10)
+  quantity        Decimal         @db.Decimal(12, 2)
+  reference       String?         @db.VarChar(100)
+  notes           String?
+  recorded_by     Int?
+  created_at      DateTime?       @default(now()) @db.Timestamp(6)
+  inventory_items inventory_items @relation(fields: [item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users           users?          @relation(fields: [recorded_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model users {
+  id                     Int                      @id @default(autoincrement())
+  username               String                   @unique @db.VarChar(50)
+  password               String                   @db.VarChar(255)
+  full_name              String                   @db.VarChar(100)
+  role                   String?                  @default("reception") @db.VarChar(20)
+  status                 String?                  @default("active") @db.VarChar(20)
+  photo                  String?                  @db.VarChar(255)
+  created_at             DateTime?                @default(now()) @db.Timestamp(6)
+  bookings               bookings[]
+  camping_bookings       camping_bookings[]
+  conference_bookings    conference_bookings[]
+  fb_orders              fb_orders[]
+  financial_transactions financial_transactions[]
+  garden_bookings        garden_bookings[]
+  guest_searches         guest_searches[]
+  guests                 guests[]
+  pa_hires               pa_hires[]
+  price_changes          price_changes[]
+  security_incidents     security_incidents[]
+  staff_leave            staff_leave[]
+  staff_shifts           staff_shifts[]
+  stock_transactions     stock_transactions[]
+  utility_bills          utility_bills[]
+  vehicle_parking        vehicle_parking[]
+  visitor_log            visitor_log[]
+  activity_log           activity_log[]
+  discounts              discounts[]
+}
+
+model utility_bills {
+  id             Int       @id @default(autoincrement())
+  utility_type   String    @db.VarChar(50)
+  provider       String?   @db.VarChar(100)
+  account_number String?   @db.VarChar(50)
+  bill_month     String?   @db.VarChar(20)
+  billing_period String?   @db.VarChar(50)
+  amount         Decimal   @db.Decimal(12, 2)
+  due_date       DateTime? @db.Date
+  paid_date      DateTime? @db.Date
+  receipt_number String?   @db.VarChar(100)
+  status         String?   @default("pending") @db.VarChar(20)
+  notes          String?
+  recorded_by    Int?
+  created_by     Int?
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  users          users?    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model vehicle_parking {
+  id           Int       @id @default(autoincrement())
+  plate_number String    @db.VarChar(20)
+  vehicle_type String?   @default("sedan") @db.VarChar(20)
+  vehicle_make String?   @db.VarChar(50)
+  color        String?   @db.VarChar(30)
+  owner_name   String    @db.VarChar(150)
+  owner_phone  String?   @db.VarChar(20)
+  guest_id     Int?
+  parking_spot String?   @db.VarChar(20)
+  parking_rate Decimal?  @default(0.00) @db.Decimal(10, 2)
+  check_in     DateTime? @db.Timestamp(6)
+  check_out    DateTime? @db.Timestamp(6)
+  status       String?   @default("parked") @db.VarChar(20)
+  total_charge Decimal?  @default(0.00) @db.Decimal(10, 2)
+  notes        String?
+  created_by   Int?
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  users        users?    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model visitor_log {
+  id                Int       @id @default(autoincrement())
+  visitor_name      String    @db.VarChar(100)
+  visitor_phone     String?   @db.VarChar(20)
+  visitor_id_number String?   @db.VarChar(50)
+  purpose           String?   @db.VarChar(200)
+  visiting_guest    String?   @db.VarChar(100)
+  room_number       String?   @db.VarChar(10)
+  vehicle_number    String?   @db.VarChar(20)
+  time_in           DateTime  @db.Timestamp(6)
+  time_out          DateTime? @db.Timestamp(6)
+  logged_by         Int?
+  users             users?    @relation(fields: [logged_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([time_in], map: "idx_visitor_time_in")
+}

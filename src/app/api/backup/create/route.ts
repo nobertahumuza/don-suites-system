@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
+import prisma from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +23,7 @@ export async function POST() {
 
     for (const table of tables) {
       try {
-        const { rows: data } = await pool.query(`SELECT * FROM ${table}`);
+        const data = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(`SELECT * FROM ${table}`);
         if (data.length === 0) continue;
 
         sql += `-- ${table} (${data.length} rows)\n`;
@@ -41,8 +41,6 @@ export async function POST() {
         sql += '\n';
       } catch { /* table may not exist */ }
     }
-
-    const sizeKB = (Buffer.byteLength(sql) / 1024).toFixed(1);
 
     return new NextResponse(sql, {
       headers: {

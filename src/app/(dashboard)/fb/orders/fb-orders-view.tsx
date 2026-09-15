@@ -2,24 +2,24 @@
 
 import Link from 'next/link';
 
-function formatCurrency(amount: number) {
-  return 'UGX ' + Number(amount).toLocaleString();
+function formatCurrency(amount: number | { toNumber: () => number } | null | undefined) {
+  return 'UGX ' + Number(amount ?? 0).toLocaleString();
 }
 
-function PaymentBadge({ status }: { status: string }) {
+function PaymentBadge({ status }: { status: string | null }) {
   const styles: Record<string, string> = {
     paid: 'bg-emerald-100 text-emerald-700',
     unpaid: 'bg-red-100 text-red-700',
     pending: 'bg-yellow-100 text-yellow-700',
   };
   return (
-    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${styles[status] || 'bg-gray-100 text-gray-600'}`}>
+    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${styles[status || ''] || 'bg-gray-100 text-gray-600'}`}>
       {status}
     </span>
   );
 }
 
-function FulfillmentBadge({ status }: { status: string }) {
+function FulfillmentBadge({ status }: { status: string | null }) {
   const styles: Record<string, string> = {
     pending: 'bg-yellow-100 text-yellow-700',
     preparing: 'bg-blue-100 text-blue-700',
@@ -35,20 +35,20 @@ function FulfillmentBadge({ status }: { status: string }) {
     cancelled: 'fas fa-times',
   };
   return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${styles[status] || 'bg-gray-100 text-gray-600'}`}>
-      <i className={`${icons[status] || 'fas fa-circle'} text-[8px]`}></i>
+    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${styles[status || ''] || 'bg-gray-100 text-gray-600'}`}>
+      <i className={`${icons[status || ''] || 'fas fa-circle'} text-[8px]`}></i>
       {status}
     </span>
   );
 }
 
-function OrderTypeBadge({ type }: { type: string }) {
+function OrderTypeBadge({ type }: { type: string | null | undefined }) {
   const styles: Record<string, { bg: string; icon: string; label: string }> = {
     dine_in: { bg: 'bg-blue-100 text-blue-700', icon: 'fas fa-chair', label: 'Dine In' },
     room_service: { bg: 'bg-amber-100 text-amber-700', icon: 'fas fa-concierge-bell', label: 'Room Svc' },
     takeaway: { bg: 'bg-emerald-100 text-emerald-700', icon: 'fas fa-shopping-bag', label: 'Takeaway' },
   };
-  const cfg = styles[type] || styles.dine_in;
+  const cfg = styles[type || ''] || styles.dine_in;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${cfg.bg}`}>
       <i className={`${cfg.icon} text-[9px]`}></i>
@@ -59,13 +59,15 @@ function OrderTypeBadge({ type }: { type: string }) {
 
 type Order = {
   id: number;
-  order_type: string;
-  guest_name?: string;
-  room_number?: string;
-  total: number;
-  payment_status: string;
-  status: string;
-  created_at: string;
+  order_type?: string | null;
+  guest_name?: string | null;
+  room_number?: string | null;
+  total: number | { toNumber: () => number };
+  payment_status?: string | null;
+  status?: string | null;
+  created_at?: unknown;
+  served_by_name?: string | null;
+  [key: string]: unknown;
 };
 
 type Stats = {
@@ -233,7 +235,7 @@ export default function FbOrdersView({
                       <span className="font-extrabold text-sm" style={{ color: '#0f1a3c' }}>#{order.id}</span>
                     </td>
                     <td className="px-3 py-3">
-                      <OrderTypeBadge type={order.order_type} />
+                      <OrderTypeBadge type={order.order_type ?? null} />
                     </td>
                     <td className="px-3 py-3">
                       <div className="font-semibold text-gray-800 text-xs">{order.guest_name || 'Walk-in'}</div>
@@ -243,15 +245,15 @@ export default function FbOrdersView({
                       <span className="font-extrabold text-xs" style={{ color: '#0f1a3c' }}>{formatCurrency(order.total)}</span>
                     </td>
                     <td className="px-3 py-3">
-                      <PaymentBadge status={order.payment_status} />
+                      <PaymentBadge status={order.payment_status ?? null} />
                     </td>
                     <td className="px-3 py-3">
-                      <FulfillmentBadge status={order.status} />
+                      <FulfillmentBadge status={order.status ?? null} />
                     </td>
                     <td className="px-3 py-3">
                       <span className="text-[11px] text-gray-400 whitespace-nowrap">
-                        {new Date(order.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })},{' '}
-                        {new Date(order.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        {new Date(order.created_at as string | number | Date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })},{' '}
+                        {new Date(order.created_at as string | number | Date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                       </span>
                     </td>
                     <td className="px-3 py-3">

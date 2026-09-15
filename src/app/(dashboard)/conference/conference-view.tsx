@@ -4,14 +4,14 @@ function formatCurrency(amount: number) {
   return 'UGX ' + Number(amount).toLocaleString();
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: { status: string | null }) {
   const styles: Record<string, string> = {
     confirmed: 'bg-blue-100 text-blue-700',
     completed: 'bg-emerald-100 text-emerald-700',
     cancelled: 'bg-red-100 text-red-700',
   };
   return (
-    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${styles[status] || 'bg-gray-100 text-gray-600'}`}>
+    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${styles[status || ''] || 'bg-gray-100 text-gray-600'}`}>
       {status}
     </span>
   );
@@ -21,14 +21,15 @@ type Booking = {
   id: number;
   guest_name: string;
   hall_name: string;
-  hall_type: string;
-  event_date: string;
-  start_time?: string;
-  end_time?: string;
-  purpose: string;
+  hall_type: string | null;
+  event_date: string | Date;
+  start_time?: string | Date | null;
+  end_time?: string | Date | null;
+  purpose: string | null;
   total_amount: number;
   amount_paid: number;
-  status: string;
+  status: string | null;
+  [key: string]: unknown;
 };
 
 type ConferenceData = {
@@ -150,7 +151,7 @@ export default function ConferenceView({
                     <td className="px-3 py-3 text-xs font-semibold">{booking.guest_name}</td>
                     <td className="px-3 py-3 text-xs">{booking.hall_name} ({booking.hall_type})</td>
                     <td className="px-3 py-3 text-xs">{new Date(booking.event_date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-                    <td className="px-3 py-3 text-xs">{booking.start_time?.slice(0, 5)} - {booking.end_time?.slice(0, 5)}</td>
+                    <td className="px-3 py-3 text-xs">{String(booking.start_time ?? '').slice(0, 5)} - {String(booking.end_time ?? '').slice(0, 5)}</td>
                     <td className="px-3 py-3 text-xs">{booking.purpose}</td>
                     <td className="px-3 py-3 font-bold text-xs" style={{ color: '#0f1a3c' }}>{formatCurrency(booking.total_amount)}</td>
                     <td className="px-3 py-3 font-bold text-xs" style={{ color: '#10b981' }}>{formatCurrency(booking.amount_paid)}</td>

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
+import prisma from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       const trimmed = stmt.trim();
       if (!trimmed || trimmed.startsWith('--')) continue;
       try {
-        await pool.query(trimmed);
+        await prisma.$executeRawUnsafe(trimmed);
         executed++;
       } catch { /* skip individual errors */ }
     }

@@ -11,7 +11,7 @@ interface MenuItem {
   price: number;
   stock_quantity: number;
   image: string | null;
-  category_id: number;
+  category_id: number | null;
   category_name: string;
 }
 
@@ -75,7 +75,7 @@ export default function NewOrderPage() {
 
   useEffect(() => {
     Promise.all([getFbItems(), getActiveBookings()]).then(([itemsData, bookingsData]) => {
-      setItems(itemsData as MenuItem[]);
+      setItems(itemsData.map((item: any) => ({ ...item, price: Number(item.price), stock_quantity: item.stock_quantity ?? 0, category_name: item.category_name ?? '', category_id: item.category_id ?? 0 })) as MenuItem[]);
       setBookings(bookingsData as Booking[]);
       setLoading(false);
     });

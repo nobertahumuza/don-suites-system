@@ -1,4 +1,4 @@
-import pool from '@/lib/db';
+import prisma from '@/lib/db';
 import BookingForm from './booking-form';
 
 export default async function NewBookingPage({
@@ -9,21 +9,27 @@ export default async function NewBookingPage({
   const params = await searchParams;
   const preselectedRoom = params.room_id ? parseInt(params.room_id) : 0;
 
-  const { rows: types } = await pool.query('SELECT id, name, price, cooking_space_price FROM room_types ORDER BY name ASC');
+  const types = await prisma.room_types.findMany({
+    orderBy: { name: 'asc' },
+  });
 
-  const typeIds = types.map((t: Record<string, unknown>) => Number(t.id));
   let availableRooms: Array<Record<string, unknown>> = [];
-  if (typeIds.length > 0) {
-    const placeholders = typeIds.map((_: unknown, i: number) => `$${i + 1}`).join(',');
-    const { rows: rooms } = await pool.query(
-      `SELECT r.*, rt.name AS type_name, rt.price, rt.cooking_space_price
-       FROM rooms r
-       LEFT JOIN room_types rt ON r.room_type_id = rt.id
-       WHERE r.status = 'available' AND r.room_type_id IN (${placeholders})
-       ORDER BY r.room_number ASC`,
-      typeIds
-    );
-    availableRooms = rooms as Array<Record<string, unknown>>;
+  if (types.length > 0) {
+    const typeIds = types.map((t) => t.id);
+    const rooms = await prisma.rooms.findMany({
+      where: {
+        status: 'available',
+        room_type_id: { in: typeIds },
+      },
+      include: { room_types: true },
+      orderBy: { room_number: 'asc' },
+    });
+    availableRooms = rooms.map((r) => ({
+      ...r,
+      type_name: r.room_types?.name,
+      price: r.room_types?.price,
+      cooking_space_price: r.room_types?.cooking_space_price,
+    }));
   }
 
   return (

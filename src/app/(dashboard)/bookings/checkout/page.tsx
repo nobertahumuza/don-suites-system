@@ -1,33 +1,30 @@
-import pool from '@/lib/db';
+import prisma from '@/lib/db';
 import Link from 'next/link';
 import CheckoutButton from './checkout-button';
 
 async function getBookingByRoom(roomId: number) {
-  const { rows: bookings } = await pool.query(
-    `SELECT b.*, g.full_name, g.phone, g.email, g.id_type, g.id_number, g.nationality,
-            r.room_number, rt.name AS type_name, rt.price
-     FROM bookings b
-     JOIN guests g ON b.guest_id = g.id
-     JOIN rooms r ON b.room_id = r.id
-     LEFT JOIN room_types rt ON r.room_type_id = rt.id
-     WHERE b.status = 'checked_in' AND b.room_id = $1
-     ORDER BY b.actual_check_in DESC LIMIT 1`,
-    [roomId]
-  );
-  return bookings.length > 0 ? bookings[0] : null;
+  return prisma.bookings.findFirst({
+    where: {
+      status: 'checked_in',
+      room_id: roomId,
+    },
+    include: {
+      guests: true,
+      rooms: { include: { room_types: true } },
+    },
+    orderBy: { actual_check_in: 'desc' },
+  });
 }
 
 async function getActiveStays() {
-  const { rows } = await pool.query(
-    `SELECT b.*, g.full_name, g.phone, r.room_number, rt.name AS type_name, b.actual_check_in
-     FROM bookings b
-     JOIN guests g ON b.guest_id = g.id
-     JOIN rooms r ON b.room_id = r.id
-     LEFT JOIN room_types rt ON r.room_type_id = rt.id
-     WHERE b.status = 'checked_in'
-     ORDER BY b.actual_check_in ASC`
-  );
-  return rows as Array<Record<string, unknown>>;
+  return prisma.bookings.findMany({
+    where: { status: 'checked_in' },
+    include: {
+      guests: true,
+      rooms: { include: { room_types: true } },
+    },
+    orderBy: { actual_check_in: 'asc' },
+  });
 }
 
 export default async function CheckoutPage({
@@ -48,8 +45,8 @@ export default async function CheckoutPage({
   let nights = 0;
   let balance = 0;
   if (booking) {
-    const ci = new Date(booking.check_in_date as string);
-    const co = new Date(booking.check_out_date as string);
+    const ci = new Date(booking.check_in_date);
+    const co = new Date(booking.check_out_date);
     nights = Math.ceil((co.getTime() - ci.getTime()) / (1000 * 60 * 60 * 24));
     balance = Number(booking.total_amount) - Number(booking.amount_paid);
   }
@@ -80,24 +77,24 @@ export default async function CheckoutPage({
               <tbody>
                 <tr className="border-b border-gray-100">
                   <td className="py-2 text-gray-500 w-[40%]">Booking ID</td>
-                  <td className="py-2 font-semibold text-gray-900">#{booking.id as number}</td>
+                  <td className="py-2 font-semibold text-gray-900">#{booking.id}</td>
                 </tr>
                 <tr className="border-b border-gray-100">
                   <td className="py-2 text-gray-500">Room</td>
                   <td className="py-2">
-                    <span className="font-bold text-gray-900">{booking.room_number as string}</span>
+                    <span className="font-bold text-gray-900">{booking.rooms?.room_number}</span>
                     <span
                       className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded"
                       style={{ background: '#ecfeff', color: '#06b6d4' }}
                     >
-                      {booking.type_name as string}
+                      {booking.rooms?.room_types?.name}
                     </span>
                   </td>
                 </tr>
                 <tr className="border-b border-gray-100">
                   <td className="py-2 text-gray-500">Scheduled Check-in</td>
                   <td className="py-2 text-gray-700">
-                    {new Date(booking.check_in_date as string).toLocaleDateString('en-US', {
+                    {new Date(booking.check_in_date).toLocaleDateString('en-US', {
                       month: 'short', day: 'numeric', year: 'numeric',
                     })}
                   </td>
@@ -105,7 +102,7 @@ export default async function CheckoutPage({
                 <tr className="border-b border-gray-100">
                   <td className="py-2 text-gray-500">Scheduled Check-out</td>
                   <td className="py-2 text-gray-700">
-                    {new Date(booking.check_out_date as string).toLocaleDateString('en-US', {
+                    {new Date(booking.check_out_date).toLocaleDateString('en-US', {
                       month: 'short', day: 'numeric', year: 'numeric',
                     })}
                   </td>
@@ -114,7 +111,7 @@ export default async function CheckoutPage({
                   <td className="py-2 text-gray-500">Actual Check-in</td>
                   <td className="py-2 text-gray-700">
                     {booking.actual_check_in
-                      ? new Date(booking.actual_check_in as string).toLocaleDateString('en-US', {
+                      ? new Date(booking.actual_check_in).toLocaleDateString('en-US', {
                           month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
                         })
                       : 'N/A'}
@@ -160,19 +157,19 @@ export default async function CheckoutPage({
                 <tbody>
                   <tr className="border-b border-gray-100">
                     <td className="py-2 text-gray-500 w-[40%]">Full Name</td>
-                    <td className="py-2 font-bold text-gray-900">{booking.full_name as string}</td>
+                    <td className="py-2 font-bold text-gray-900">{booking.guests?.full_name}</td>
                   </tr>
                   <tr className="border-b border-gray-100">
                     <td className="py-2 text-gray-500">Phone</td>
-                    <td className="py-2 text-gray-700">{booking.phone as string}</td>
+                    <td className="py-2 text-gray-700">{booking.guests?.phone}</td>
                   </tr>
                   <tr className="border-b border-gray-100">
                     <td className="py-2 text-gray-500">Email</td>
-                    <td className="py-2 text-gray-700">{(booking.email as string) || 'N/A'}</td>
+                    <td className="py-2 text-gray-700">{booking.guests?.email || 'N/A'}</td>
                   </tr>
                   <tr>
                     <td className="py-2 text-gray-500">Nationality</td>
-                    <td className="py-2 text-gray-700">{(booking.nationality as string) || 'N/A'}</td>
+                    <td className="py-2 text-gray-700">{booking.guests?.nationality || 'N/A'}</td>
                   </tr>
                 </tbody>
               </table>
@@ -184,8 +181,8 @@ export default async function CheckoutPage({
                 Confirm Check-out
               </h5>
               <p className="text-xs text-gray-500 mb-2">
-                Check out <strong>{booking.full_name as string}</strong> from Room{' '}
-                <strong>{booking.room_number as string}</strong>.
+                Check out <strong>{booking.guests?.full_name}</strong> from Room{' '}
+                <strong>{booking.rooms?.room_number}</strong>.
               </p>
               <p className="text-xs text-gray-500 mb-3">
                 A financial transaction of{' '}
@@ -200,7 +197,7 @@ export default async function CheckoutPage({
                   Outstanding Balance: UGX {balance.toLocaleString()}
                 </div>
               )}
-              <CheckoutButton bookingId={booking.id as number} />
+              <CheckoutButton bookingId={booking.id} />
             </div>
           </div>
         </div>
@@ -223,19 +220,19 @@ export default async function CheckoutPage({
               </thead>
               <tbody>
                 {activeStays.map((stay) => (
-                  <tr key={stay.id as number} className="border-b border-gray-50 hover:bg-gray-50/50">
-                    <td className="px-4 py-3 font-bold text-gray-900">#{stay.id as number}</td>
-                    <td className="px-4 py-3 text-gray-700">{stay.full_name as string}</td>
-                    <td className="px-4 py-3 font-bold text-gray-900">{stay.room_number as string}</td>
+                  <tr key={stay.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-4 py-3 font-bold text-gray-900">#{stay.id}</td>
+                    <td className="px-4 py-3 text-gray-700">{stay.guests?.full_name}</td>
+                    <td className="px-4 py-3 font-bold text-gray-900">{stay.rooms?.room_number}</td>
                     <td className="px-4 py-3 text-gray-600">
                       {stay.actual_check_in
-                        ? new Date(stay.actual_check_in as string).toLocaleDateString('en-US', {
+                        ? new Date(stay.actual_check_in).toLocaleDateString('en-US', {
                             month: 'short', day: 'numeric', year: 'numeric',
                           })
                         : 'N/A'}
                     </td>
                     <td className="px-4 py-3 text-gray-600">
-                      {new Date(stay.check_out_date as string).toLocaleDateString('en-US', {
+                      {new Date(stay.check_out_date).toLocaleDateString('en-US', {
                         month: 'short', day: 'numeric', year: 'numeric',
                       })}
                     </td>

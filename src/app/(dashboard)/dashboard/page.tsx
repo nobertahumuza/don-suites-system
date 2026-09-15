@@ -1,4 +1,4 @@
-import db from "@/lib/db";
+import prisma from "@/lib/db";
 import TopBar from "@/components/TopBar";
 
 export default async function DashboardPage() {
@@ -19,80 +19,111 @@ export default async function DashboardPage() {
   let openIncidents = 0;
 
   try {
-    let r = await db.query("SELECT COUNT(*) as total FROM rooms");
-    totalRooms = Number(r.rows[0]?.total ?? 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
 
-    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'available'");
-    availableRooms = Number(r.rows[0]?.total ?? 0);
+    const [
+      totalRoomsR,
+      availableRoomsR,
+      occupiedRoomsR,
+      cleaningRoomsR,
+      outOfServiceR,
+      todayCheckinsR,
+      todayCheckoutsR,
+      todayRevenueR,
+      monthRevenueR,
+      activeBookingsR,
+      lowStockR,
+      activeGuestsR,
+      pendingPaymentsR,
+    ] = await Promise.all([
+      prisma.rooms.count(),
+      prisma.rooms.count({ where: { status: 'available' } }),
+      prisma.rooms.count({ where: { status: 'occupied' } }),
+      prisma.rooms.count({ where: { status: 'cleaning' } }),
+      prisma.rooms.count({ where: { status: 'out_of_service' } }),
+      prisma.bookings.count({
+        where: {
+          check_in_date: { gte: today, lt: tomorrow },
+          status: { in: ['confirmed', 'checked_in'] },
+        },
+      }),
+      prisma.bookings.count({
+        where: {
+          check_out_date: { gte: today, lt: tomorrow },
+          status: 'checked_in',
+        },
+      }),
+      prisma.financial_transactions.aggregate({
+        _sum: { amount: true },
+        where: { type: 'income', transaction_date: { gte: today, lt: tomorrow } },
+      }),
+      prisma.financial_transactions.aggregate({
+        _sum: { amount: true },
+        where: {
+          type: 'income',
+          transaction_date: { gte: monthStart, lt: monthEnd },
+        },
+      }),
+      prisma.bookings.count({
+        where: { status: { in: ['confirmed', 'checked_in'] } },
+      }),
+      prisma.inventory_items.count({
+        where: {
+          quantity_in_stock: { lte: prisma.inventory_items.fields.reorder_level },
+          status: 'active',
+        },
+      }).catch(() => 0),
+      prisma.bookings.count({
+        where: {
+          status: 'checked_in',
+          check_in_date: { lte: today },
+          check_out_date: { gte: today },
+        },
+      }),
+      prisma.fb_orders.count({ where: { payment_status: 'unpaid' } }),
+    ]);
 
-    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'occupied'");
-    occupiedRooms = Number(r.rows[0]?.total ?? 0);
-
-    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'cleaning'");
-    cleaningRooms = Number(r.rows[0]?.total ?? 0);
-
-    r = await db.query("SELECT COUNT(*) as total FROM rooms WHERE status = 'out_of_service'");
-    outOfServiceRooms = Number(r.rows[0]?.total ?? 0);
-
-    r = await db.query(
-      "SELECT COUNT(*) as total FROM bookings WHERE check_in_date = CURRENT_DATE AND status IN ('confirmed','checked_in')"
-    );
-    todayCheckins = Number(r.rows[0]?.total ?? 0);
-
-    r = await db.query(
-      "SELECT COUNT(*) as total FROM bookings WHERE check_out_date = CURRENT_DATE AND status = 'checked_in'"
-    );
-    todayCheckouts = Number(r.rows[0]?.total ?? 0);
-
-    r = await db.query(
-      "SELECT COALESCE(SUM(amount),0) as total FROM financial_transactions WHERE type='income' AND transaction_date = CURRENT_DATE"
-    );
-    todayRevenue = Number(r.rows[0]?.total ?? 0);
-
-    r = await db.query(
-      "SELECT COALESCE(SUM(amount),0) as total FROM financial_transactions WHERE type='income' AND EXTRACT(MONTH FROM transaction_date) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM transaction_date) = EXTRACT(YEAR FROM CURRENT_DATE)"
-    );
-    monthRevenue = Number(r.rows[0]?.total ?? 0);
-
-    r = await db.query(
-      "SELECT COUNT(*) as total FROM bookings WHERE status IN ('confirmed','checked_in')"
-    );
-    activeBookings = Number(r.rows[0]?.total ?? 0);
-
-    r = await db.query(
-      "SELECT COUNT(*) as total FROM inventory_items WHERE quantity_in_stock <= reorder_level AND status = 'active'"
-    );
-    lowStock = Number(r.rows[0]?.total ?? 0);
-
-    r = await db.query(
-      "SELECT COUNT(DISTINCT b.id) as total FROM bookings b WHERE b.status = 'checked_in' AND b.check_in_date <= CURRENT_DATE AND b.check_out_date >= CURRENT_DATE"
-    );
-    activeGuests = Number(r.rows[0]?.total ?? 0);
-
-    r = await db.query(
-      "SELECT COUNT(*) as total FROM fb_orders WHERE payment_status = 'unpaid'"
-    );
-    pendingPayments = Number(r.rows[0]?.total ?? 0);
+    totalRooms = totalRoomsR;
+    availableRooms = availableRoomsR;
+    occupiedRooms = occupiedRoomsR;
+    cleaningRooms = cleaningRoomsR;
+    outOfServiceRooms = outOfServiceR;
+    todayCheckins = todayCheckinsR;
+    todayCheckouts = todayCheckoutsR;
+    todayRevenue = Number(todayRevenueR._sum.amount ?? 0);
+    monthRevenue = Number(monthRevenueR._sum.amount ?? 0);
+    activeBookings = activeBookingsR;
+    activeGuests = activeGuestsR;
+    pendingPayments = pendingPaymentsR;
 
     try {
-      r = await db.query(
-        "SELECT COUNT(*) as total FROM fb_orders WHERE DATE(created_at) = CURRENT_DATE"
-      );
-      todayFbOrders = Number(r.rows[0]?.total ?? 0);
+      todayFbOrders = await prisma.fb_orders.count({
+        where: {
+          created_at: { gte: today, lt: tomorrow },
+        },
+      });
     } catch {
       todayFbOrders = 0;
     }
 
     try {
-      r = await db.query(
-        "SELECT COUNT(*) as total FROM security_incidents WHERE status != 'resolved'"
-      );
-      openIncidents = Number(r.rows[0]?.total ?? 0);
+      openIncidents = await prisma.security_incidents.count({
+        where: { status: { not: 'resolved' } },
+      });
     } catch {
       openIncidents = 0;
     }
-  } catch (err: any) {
-    console.error('Dashboard query error:', err?.message || err);
+
+    lowStock = await prisma.$queryRawUnsafe<{ count: number }[]>(
+      `SELECT COUNT(*) as count FROM inventory_items WHERE quantity_in_stock <= reorder_level AND status = 'active'`
+    ).then(r => Number(r[0]?.count ?? 0));
+  } catch (err: unknown) {
+    console.error('Dashboard query error:', (err as Error)?.message || err);
   }
 
   const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;

@@ -1,4 +1,4 @@
-import pool from '@/lib/db';
+import prisma from '@/lib/db';
 import Link from 'next/link';
 import { updateRoomStatus } from '@/lib/actions/booking';
 import StatusFilter from './status-filter';
@@ -20,33 +20,38 @@ const statusBg: Record<string, string> = {
 };
 
 async function getRooms(statusFilter: string) {
-  let query = `SELECT r.*, rt.name AS type_name, rt.price
-    FROM rooms r
-    LEFT JOIN room_types rt ON r.room_type_id = rt.id`;
-  const params: string[] = [];
+  const where = statusFilter && ['available', 'occupied', 'reserved', 'cleaning', 'out_of_service'].includes(statusFilter)
+    ? { status: statusFilter }
+    : undefined;
 
-  if (statusFilter && ['available', 'occupied', 'reserved', 'cleaning', 'out_of_service'].includes(statusFilter)) {
-    query += ' WHERE r.status = $1';
-    params.push(statusFilter);
-  }
+  const rooms = await prisma.rooms.findMany({
+    include: { room_types: true },
+    where,
+    orderBy: { room_number: 'asc' },
+  });
 
-  query += ' ORDER BY r.room_number ASC';
-  const { rows } = await pool.query(query, params);
-  return rows as Array<Record<string, unknown>>;
+  return rooms;
 }
 
 async function getStats() {
-  const { rows } = await pool.query(`
-    SELECT
-      COUNT(*) AS total_rooms,
-      SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) AS available_count,
-      SUM(CASE WHEN status = 'occupied' THEN 1 ELSE 0 END) AS occupied_count,
-      SUM(CASE WHEN status = 'reserved' THEN 1 ELSE 0 END) AS reserved_count,
-      SUM(CASE WHEN status = 'cleaning' THEN 1 ELSE 0 END) AS cleaning_count,
-      SUM(CASE WHEN status = 'out_of_service' THEN 1 ELSE 0 END) AS out_of_service_count
-    FROM rooms
-  `);
-  return rows[0];
+  const [totalRooms, availableCount, occupiedCount, reservedCount, cleaningCount, outOfServiceCount] =
+    await Promise.all([
+      prisma.rooms.count(),
+      prisma.rooms.count({ where: { status: 'available' } }),
+      prisma.rooms.count({ where: { status: 'occupied' } }),
+      prisma.rooms.count({ where: { status: 'reserved' } }),
+      prisma.rooms.count({ where: { status: 'cleaning' } }),
+      prisma.rooms.count({ where: { status: 'out_of_service' } }),
+    ]);
+
+  return {
+    total_rooms: totalRooms,
+    available_count: availableCount,
+    occupied_count: occupiedCount,
+    reserved_count: reservedCount,
+    cleaning_count: cleaningCount,
+    out_of_service_count: outOfServiceCount,
+  };
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -147,15 +152,15 @@ export default async function RoomsPage({
                   </td>
                 </tr>
               ) : (
-                rooms.map((room: Record<string, unknown>) => (
-                  <tr key={room.id as number} className="border-b border-gray-50 hover:bg-gray-50/50">
-                    <td className="px-4 py-3 font-bold text-gray-900">{room.room_number as string}</td>
-                    <td className="px-4 py-3 text-gray-600">{(room.type_name as string) || 'N/A'}</td>
+                rooms.map((room) => (
+                  <tr key={room.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-4 py-3 font-bold text-gray-900">{room.room_number}</td>
+                    <td className="px-4 py-3 text-gray-600">{room.room_types?.name || 'N/A'}</td>
                     <td className="px-4 py-3 font-semibold" style={{ color: '#0f1a3c' }}>
-                      UGX {Number(room.price).toLocaleString()}
+                      UGX {Number(room.room_types?.price || 0).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={room.status as string} />
+                      <StatusBadge status={room.status || 'available'} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1 flex-wrap">
@@ -187,7 +192,7 @@ export default async function RoomsPage({
                           </Link>
                         )}
                         {room.status !== 'available' && room.status !== 'occupied' && (
-                          <form action={async () => { 'use server'; await updateRoomStatus(room.id as number, 'available'); }}>
+                          <form action={async () => { 'use server'; await updateRoomStatus(room.id, 'available'); }}>
                             <button
                               type="submit"
                               className="px-2 py-1 rounded text-[10px] font-semibold border border-green-300 text-green-600 hover:bg-green-50"
@@ -198,7 +203,7 @@ export default async function RoomsPage({
                           </form>
                         )}
                         {room.status !== 'cleaning' && (
-                          <form action={async () => { 'use server'; await updateRoomStatus(room.id as number, 'cleaning'); }}>
+                          <form action={async () => { 'use server'; await updateRoomStatus(room.id, 'cleaning'); }}>
                             <button
                               type="submit"
                               className="px-2 py-1 rounded text-[10px] font-semibold border border-cyan-300 text-cyan-600 hover:bg-cyan-50"
@@ -209,7 +214,7 @@ export default async function RoomsPage({
                           </form>
                         )}
                         {room.status !== 'out_of_service' && (
-                          <form action={async () => { 'use server'; await updateRoomStatus(room.id as number, 'out_of_service'); }}>
+                          <form action={async () => { 'use server'; await updateRoomStatus(room.id, 'out_of_service'); }}>
                             <button
                               type="submit"
                               className="px-2 py-1 rounded text-[10px] font-semibold border border-red-300 text-red-600 hover:bg-red-50"

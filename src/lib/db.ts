@@ -1,45 +1,23 @@
-import { neon } from '@neondatabase/serverless';
+import { PrismaClient } from '@prisma/client';
 
-function getSql() {
-  return neon(process.env.DATABASE_URL!);
-}
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
-export default {
-  query: async (text: string, params?: unknown[]) => {
-    const sql = getSql();
-    const rows = await sql.query(text, params ?? []);
-    return { rows };
-  },
-  connect: async () => {
-    const sql = getSql();
-    return {
-      query: async (text: string, params?: unknown[]) => {
-        const rows = await sql.query(text, params ?? []);
-        return { rows };
-      },
-      release: () => {},
-    };
-  },
-};
+export const prisma = globalForPrisma.prisma || new PrismaClient();
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
+export default prisma;
 
 export async function query(text: string, params?: unknown[]) {
-  const sql = getSql();
-  return await sql.query(text, params ?? []);
+  const result = await prisma.$queryRawUnsafe(text, ...(params ?? []));
+  return { rows: result as Record<string, unknown>[] };
 }
 
 export async function queryOne(text: string, params?: unknown[]) {
-  const sql = getSql();
-  const rows = await sql.query(text, params ?? []);
-  return rows[0] || null;
+  const rows = await query(text, params);
+  return rows.rows[0] || null;
 }
 
 export async function getClient() {
-  const sql = getSql();
-  return {
-    query: async (text: string, params?: unknown[]) => {
-      const rows = await sql.query(text, params ?? []);
-      return { rows };
-    },
-    release: () => {},
-  };
+  return prisma;
 }

@@ -1,52 +1,55 @@
 'use server';
 
-import pool, { getClient } from '@/lib/db';
+import prisma from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function getConferenceBookings(filters?: { status?: string; date?: string }) {
-  const conditions = ['1=1'];
-  const params: any[] = [];
+  const where: Record<string, unknown> = {};
 
   if (filters?.status && ['confirmed', 'completed', 'cancelled'].includes(filters.status)) {
-    conditions.push(`cb.status = $${params.length + 1}`);
-    params.push(filters.status);
+    where.status = filters.status;
   }
   if (filters?.date) {
-    conditions.push(`cb.event_date = $${params.length + 1}`);
-    params.push(filters.date);
+    where.event_date = new Date(filters.date);
   }
 
-  const where = conditions.join(' AND ');
-  const result = await pool.query(
-    `SELECT cb.*, ch.name as hall_name, ch.type as hall_type, ch.capacity
-     FROM conference_bookings cb
-     JOIN conference_halls ch ON cb.hall_id = ch.id
-     WHERE ${where}
-     ORDER BY cb.event_date DESC, cb.start_time DESC`,
-    params
-  );
+  const bookings = await prisma.conference_bookings.findMany({
+    where,
+    include: { conference_halls: true },
+    orderBy: [{ event_date: 'desc' }, { start_time: 'desc' }],
+  });
 
-  const bookings = result.rows as any[];
-  let totalRevenue = 0;
-  bookings.forEach((b: any) => { totalRevenue += Number(b.amount_paid); });
+  const mapped = bookings.map((b) => ({
+    ...b,
+    hall_name: b.conference_halls.name,
+    hall_type: b.conference_halls.type,
+    capacity: b.conference_halls.capacity,
+    total_amount: Number(b.total_amount ?? 0),
+    amount_paid: Number(b.amount_paid ?? 0),
+    price_per_day: Number(b.conference_halls.price_per_day ?? 0),
+    conference_halls: undefined,
+  }));
 
-  return { bookings, totalBookings: bookings.length, totalRevenue };
+  const totalRevenue = mapped.reduce((sum, b) => sum + Number(b.amount_paid ?? 0), 0);
+
+  return { bookings: mapped, totalBookings: mapped.length, totalRevenue };
 }
 
 export async function getConferenceHalls() {
-  const result = await pool.query('SELECT * FROM conference_halls ORDER BY name');
-  return result.rows as any[];
+  return prisma.conference_halls.findMany({ orderBy: { name: 'asc' } });
 }
 
 export async function getGardenBookings() {
-  const result = await pool.query(
-    `SELECT gb.*, g.full_name as guest_name
-     FROM garden_bookings gb
-     LEFT JOIN guests g ON gb.guest_id = g.id
-     ORDER BY gb.event_date DESC`
-  );
-  return result.rows as any[];
+  const bookings = await prisma.garden_bookings.findMany({
+    include: { users: { select: { full_name: true } } },
+    orderBy: { event_date: 'desc' },
+  });
+
+  return bookings.map((b) => ({
+    ...b,
+    guest_name: b.guest_name || b.users?.full_name || null,
+  }));
 }
 
 export async function updateConferenceBookingStatus(bookingId: number, status: string) {
@@ -55,29 +58,21 @@ export async function updateConferenceBookingStatus(bookingId: number, status: s
 
   if (!['completed', 'cancelled'].includes(status)) throw new Error('Invalid status');
 
-  const client = await getClient();
-  try {
-    await client.query('BEGIN');
+  const booking = await prisma.conference_bookings.findUnique({ where: { id: bookingId } });
 
-    await client.query(
-      `UPDATE conference_bookings SET status = $1 WHERE id = $2 AND status = 'confirmed'`,
-      [status, bookingId]
-    );
+  await prisma.$transaction([
+    prisma.conference_bookings.update({
+      where: { id: bookingId },
+      data: { status },
+    }),
+    prisma.conference_halls.update({
+      where: { id: booking?.hall_id! },
+      data: { status: 'available' },
+    }),
+  ]);
 
-    await client.query(
-      `UPDATE conference_halls SET status = 'available' WHERE id = (SELECT hall_id FROM conference_bookings WHERE id = $1)`,
-      [bookingId]
-    );
-
-    await client.query('COMMIT');
-    revalidatePath('/conference');
-    return { success: true };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  revalidatePath('/conference');
+  return { success: true };
 }
 
 export async function createConferenceBooking(data: {
@@ -100,16 +95,30 @@ export async function createConferenceBooking(data: {
   if (!event_date) throw new Error('Event date is required');
   if (!hall_id) throw new Error('Hall is required');
 
-  const result = await pool.query(
-    `INSERT INTO conference_bookings (hall_id, guest_name, event_date, start_time, end_time, purpose, total_amount, amount_paid, status, notes, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'confirmed', $9, $10) RETURNING id`,
-    [hall_id, guest_name, event_date, start_time, end_time, purpose || '', total_amount || 0, amount_paid || 0, notes || null, user.id]
-  );
-
-  await pool.query("UPDATE conference_halls SET status = 'booked' WHERE id = $1", [hall_id]);
+  const result = await prisma.$transaction([
+    prisma.conference_bookings.create({
+      data: {
+        hall_id,
+        guest_name,
+        event_date: new Date(event_date),
+        start_time: start_time ? new Date(`1970-01-01T${start_time}`) : null,
+        end_time: end_time ? new Date(`1970-01-01T${end_time}`) : null,
+        purpose: purpose || '',
+        total_amount: total_amount || 0,
+        amount_paid: amount_paid || 0,
+        status: 'confirmed',
+        notes: notes || null,
+        created_by: user.id,
+      },
+    }),
+    prisma.conference_halls.update({
+      where: { id: hall_id },
+      data: { status: 'booked' },
+    }),
+  ]);
 
   revalidatePath('/conference');
-  return { success: true, id: result.rows[0].id };
+  return { success: true, id: (result[0] as { id: number }).id };
 }
 
 export async function createGardenBooking(data: {
@@ -131,12 +140,22 @@ export async function createGardenBooking(data: {
   if (!guest_name) throw new Error('Guest name is required');
   if (!event_date) throw new Error('Event date is required');
 
-  const result = await pool.query(
-    `INSERT INTO garden_bookings (guest_id, guest_name, event_date, start_time, end_time, purpose, total_amount, amount_paid, status, notes, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'confirmed', $9, $10) RETURNING id`,
-    [guest_id || null, guest_name, event_date, start_time, end_time, purpose || '', total_amount || 0, amount_paid || 0, notes || null, user.id]
-  );
+  const result = await prisma.garden_bookings.create({
+    data: {
+      guest_id: guest_id || null,
+      guest_name,
+      event_date: new Date(event_date),
+      start_time: start_time ? new Date(`1970-01-01T${start_time}`) : null,
+      end_time: end_time ? new Date(`1970-01-01T${end_time}`) : null,
+      purpose: purpose || '',
+      total_amount: total_amount || 0,
+      amount_paid: amount_paid || 0,
+      status: 'confirmed',
+      notes: notes || null,
+      created_by: user.id,
+    },
+  });
 
   revalidatePath('/conference');
-  return { success: true, id: result.rows[0].id };
+  return { success: true, id: result.id };
 }

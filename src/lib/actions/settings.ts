@@ -1,14 +1,16 @@
 'use server';
 
-import pool from '@/lib/db';
+import prisma from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function getEmailSettings() {
-  const result = await pool.query('SELECT setting_key, setting_value FROM email_settings');
+  const rows = await prisma.email_settings.findMany({
+    select: { setting_key: true, setting_value: true },
+  });
   const settings: Record<string, string> = {};
-  result.rows.forEach((row: any) => {
-    settings[row.setting_key] = row.setting_value;
+  rows.forEach((row) => {
+    settings[row.setting_key] = row.setting_value ?? '';
   });
   return settings;
 }
@@ -31,10 +33,11 @@ export async function saveEmailSettings(data: {
 
   for (const field of fields) {
     const val = data[field] || '';
-    await pool.query(
-      'INSERT INTO email_settings (setting_key, setting_value) VALUES ($1, $2) ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value',
-      [field, val]
-    );
+    await prisma.email_settings.upsert({
+      where: { setting_key: field },
+      update: { setting_value: val },
+      create: { setting_key: field, setting_value: val },
+    });
   }
 
   revalidatePath('/settings/smtp');
@@ -42,8 +45,9 @@ export async function saveEmailSettings(data: {
 }
 
 export async function getBackupList() {
-  const result = await pool.query(
-    `SELECT setting_key, setting_value FROM email_settings WHERE setting_key = 'backup_dir'`
-  );
-  return result.rows[0]?.setting_value || 'backups';
+  const row = await prisma.email_settings.findUnique({
+    where: { setting_key: 'backup_dir' },
+    select: { setting_value: true },
+  });
+  return row?.setting_value || 'backups';
 }
