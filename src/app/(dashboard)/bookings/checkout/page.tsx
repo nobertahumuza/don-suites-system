@@ -1,6 +1,7 @@
 import prisma from '@/lib/db';
 import Link from 'next/link';
 import CheckoutButton from './checkout-button';
+import PartialPaymentForm from './partial-payment-form';
 
 async function getBookingByRoom(roomId: number) {
   return prisma.bookings.findFirst({
@@ -148,6 +149,8 @@ export default async function CheckoutPage({
           </div>
 
           <div className="space-y-5">
+            {balance > 0 && <PartialPaymentForm bookingId={booking.id} />}
+
             <div className="bg-white rounded-xl shadow-sm p-5">
               <h5 className="text-sm font-bold mb-4" style={{ color: '#0f1a3c' }}>
                 <i className="fas fa-user mr-1.5" style={{ color: '#c9a96e' }}></i>

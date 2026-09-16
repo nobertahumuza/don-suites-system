@@ -159,3 +159,128 @@ export async function createGardenBooking(data: {
   revalidatePath('/conference');
   return { success: true, id: result.id };
 }
+
+export async function getConferenceHallsWithStats() {
+  const halls = await prisma.conference_halls.findMany({
+    include: { _count: { select: { conference_bookings: true } } },
+    orderBy: { name: 'asc' },
+  });
+
+  return halls.map((h) => ({
+    id: h.id,
+    name: h.name,
+    capacity: h.capacity,
+    price_per_day: Number(h.price_per_day),
+    type: h.type,
+    status: h.status,
+    description: h.description,
+    booking_count: h._count.conference_bookings,
+    created_at: h.created_at,
+  }));
+}
+
+export async function createConferenceHall(data: {
+  name: string;
+  capacity: number;
+  price_per_day: number;
+  type: string;
+  status: string;
+  description: string;
+}) {
+  const user = await getSession();
+  if (!user) throw new Error('Unauthorized');
+
+  const { name, capacity, price_per_day, type, status, description } = data;
+  if (!name) throw new Error('Name is required');
+  if (!price_per_day || price_per_day <= 0) throw new Error('Price must be greater than 0');
+
+  await prisma.conference_halls.create({
+    data: {
+      name,
+      capacity: capacity || null,
+      price_per_day,
+      type: type || null,
+      status: status || 'available',
+      description: description || null,
+    },
+  });
+
+  revalidatePath('/conference/halls');
+  revalidatePath('/conference');
+  return { success: true };
+}
+
+export async function updateConferenceHall(hallId: number, data: {
+  name: string;
+  capacity: number;
+  price_per_day: number;
+  type: string;
+  status: string;
+  description: string;
+}) {
+  const user = await getSession();
+  if (!user) throw new Error('Unauthorized');
+
+  const { name, capacity, price_per_day, type, status, description } = data;
+  if (!name) throw new Error('Name is required');
+  if (!price_per_day || price_per_day <= 0) throw new Error('Price must be greater than 0');
+
+  await prisma.conference_halls.update({
+    where: { id: hallId },
+    data: {
+      name,
+      capacity: capacity || null,
+      price_per_day,
+      type: type || null,
+      status: status || 'available',
+      description: description || null,
+    },
+  });
+
+  revalidatePath('/conference/halls');
+  revalidatePath('/conference');
+  return { success: true };
+}
+
+export async function deleteConferenceHall(hallId: number) {
+  const user = await getSession();
+  if (!user) throw new Error('Unauthorized');
+
+  const hall = await prisma.conference_halls.findUnique({
+    where: { id: hallId },
+    include: { _count: { select: { conference_bookings: true } } },
+  });
+  if (!hall) throw new Error('Hall not found');
+  if (hall._count.conference_bookings > 0) throw new Error('Cannot delete hall with existing bookings');
+
+  await prisma.conference_halls.delete({ where: { id: hallId } });
+  revalidatePath('/conference/halls');
+  revalidatePath('/conference');
+  return { success: true };
+}
+
+export async function createConferenceBookingAction(data: {
+  hall_id: number;
+  guest_name: string;
+  guest_phone: string;
+  event_date: string;
+  event_type: string;
+  start_time: string;
+  end_time: string;
+  purpose: string;
+  total_amount: number;
+  amount_paid: number;
+  notes: string;
+}) {
+  return createConferenceBooking({
+    hall_id: data.hall_id,
+    guest_name: data.guest_name,
+    event_date: data.event_date,
+    start_time: data.start_time,
+    end_time: data.end_time,
+    purpose: data.purpose,
+    total_amount: data.total_amount,
+    amount_paid: data.amount_paid,
+    notes: data.notes || undefined,
+  });
+}
