@@ -29,7 +29,12 @@ async function handleDeleteCategory(formData: FormData) {
 }
 
 export default async function FbCategoriesPage() {
-  const categories = await getFbCategories();
+  let categories: any[] = [];
+  try {
+    categories = await getFbCategories();
+  } catch {
+    categories = [];
+  }
 
   return (
     <FbCategoriesView

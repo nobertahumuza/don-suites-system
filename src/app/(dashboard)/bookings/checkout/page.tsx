@@ -36,23 +36,24 @@ export default async function CheckoutPage({
   const params = await searchParams;
   const roomId = params.room_id ? parseInt(params.room_id) : 0;
 
-  let booking = null;
-  if (roomId > 0) {
-    booking = await getBookingByRoom(roomId);
-  }
+  try {
+    let booking = null;
+    if (roomId > 0) {
+      booking = await getBookingByRoom(roomId);
+    }
 
-  const activeStays = booking ? [] : await getActiveStays();
+    const activeStays = booking ? [] : await getActiveStays();
 
-  let nights = 0;
-  let balance = 0;
-  if (booking) {
-    const ci = new Date(booking.check_in_date);
-    const co = new Date(booking.check_out_date);
-    nights = Math.ceil((co.getTime() - ci.getTime()) / (1000 * 60 * 60 * 24));
-    balance = Number(booking.total_amount) - Number(booking.amount_paid);
-  }
+    let nights = 0;
+    let balance = 0;
+    if (booking) {
+      const ci = new Date(booking.check_in_date);
+      const co = new Date(booking.check_out_date);
+      nights = Math.ceil((co.getTime() - ci.getTime()) / (1000 * 60 * 60 * 24));
+      balance = Number(booking.total_amount) - Number(booking.amount_paid);
+    }
 
-  return (
+    return (
     <div>
       <div className="flex items-center justify-between mb-5">
         <h4 className="text-lg font-bold" style={{ color: '#0f1a3c' }}>
@@ -134,6 +135,14 @@ export default async function CheckoutPage({
                     UGX {Number(booking.amount_paid).toLocaleString()}
                   </td>
                 </tr>
+                {Number(booking.additional_charges || 0) > 0 && (
+                  <tr className="border-b border-gray-100">
+                    <td className="py-2 text-gray-500">Additional Charges</td>
+                    <td className="py-2 font-bold" style={{ color: '#f59e0b' }}>
+                      UGX {Number(booking.additional_charges).toLocaleString()}
+                    </td>
+                  </tr>
+                )}
                 <tr>
                   <td className="py-2 text-gray-500">Balance Due</td>
                   <td className="py-2 font-bold">
@@ -190,6 +199,10 @@ export default async function CheckoutPage({
               <p className="text-xs text-gray-500 mb-3">
                 A financial transaction of{' '}
                 <strong>UGX {Number(booking.total_amount).toLocaleString()}</strong> will be recorded as income.
+              </p>
+              <p className="text-[10px] text-gray-400 mb-3">
+                <i className="fas fa-info-circle mr-1"></i>
+                Late checkout (after 12:00 PM) incurs a 25% fee on the nightly rate.
               </p>
               {balance > 0 && (
                 <div
@@ -269,4 +282,17 @@ export default async function CheckoutPage({
       )}
     </div>
   );
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Failed to load check-out data';
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-10 text-center">
+        <i className="fas fa-exclamation-triangle text-4xl mb-3 block" style={{ color: '#ef4444', opacity: 0.3 }}></i>
+        <h5 className="text-gray-400 font-medium mb-3">Failed to load data</h5>
+        <p className="text-xs text-gray-400 mb-4">{errorMessage}</p>
+        <a href="/bookings/checkout" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: '#0f1a3c' }}>
+          <i className="fas fa-redo"></i> Try Again
+        </a>
+      </div>
+    );
+  }
 }

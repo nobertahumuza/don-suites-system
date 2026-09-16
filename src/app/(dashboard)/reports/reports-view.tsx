@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { exportReportToCSV, printReport } from '@/lib/actions/export';
 
 type OccupancyData = {
   summary: {
@@ -386,6 +387,47 @@ export default function ReportsView({
     router.push(`/reports?tab=${key}`);
   }
 
+  function handleExportCSV() {
+    let data: Record<string, unknown>[] = [];
+    if (activeTab === 'occupancy' && occupancyData) {
+      data = occupancyData.byType.map((t) => ({
+        Type: t.name,
+        Total: t.total,
+        Occupied: t.occupied,
+        Available: t.available,
+        Price: t.price,
+      }));
+    } else if (activeTab === 'financial' && financialData) {
+      data = financialData.recentTransactions.map((t) => ({
+        Date: t.transaction_date,
+        Type: t.type,
+        Category: t.category,
+        Description: t.description,
+        Amount: t.amount,
+        Method: t.payment_method,
+      }));
+    } else if (activeTab === 'bookings' && bookingData) {
+      data = bookingData.monthlyTrend.map((m) => ({
+        Month: m.month,
+        Bookings: m.count,
+        Revenue: m.revenue,
+      }));
+    } else if (activeTab === 'staff' && staffData) {
+      data = staffData.recentLeave.map((l) => ({
+        Staff: l.staff_name,
+        Department: l.department,
+        Type: l.leave_type,
+        Start: l.start_date,
+        End: l.end_date,
+        Days: l.days,
+        Status: l.status,
+      }));
+    }
+    if (data.length > 0) {
+      exportReportToCSV(data, `report_${activeTab}`);
+    }
+  }
+
   return (
     <div>
       <div className="rounded-2xl p-5 md:p-6 mb-6" style={{ background: 'linear-gradient(135deg, #080e22, #0f1a3c, #1a2d5a)' }}>
@@ -397,13 +439,22 @@ export default function ReportsView({
             </h1>
             <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.6)' }}>Analytics and insights across all operations</p>
           </div>
-          <button
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
-            style={{ background: '#c9a96e' }}
-          >
-            <i className="fas fa-print text-[10px]"></i> Print Report
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleExportCSV}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+              style={{ background: '#c9a96e' }}
+            >
+              <i className="fas fa-download text-[10px]"></i> Export CSV
+            </button>
+            <button
+              onClick={() => printReport()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+              style={{ background: '#0f1a3c' }}
+            >
+              <i className="fas fa-print text-[10px]"></i> Print Report
+            </button>
+          </div>
         </div>
       </div>
 

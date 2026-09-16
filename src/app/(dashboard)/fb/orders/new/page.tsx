@@ -74,11 +74,16 @@ export default function NewOrderPage() {
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    Promise.all([getFbItems(), getActiveBookings()]).then(([itemsData, bookingsData]) => {
-      setItems(itemsData.map((item: any) => ({ ...item, price: Number(item.price), stock_quantity: item.stock_quantity ?? 0, category_name: item.category_name ?? '', category_id: item.category_id ?? 0 })) as MenuItem[]);
-      setBookings(bookingsData as Booking[]);
-      setLoading(false);
-    });
+    Promise.all([getFbItems(), getActiveBookings()])
+      .then(([itemsData, bookingsData]) => {
+        setItems(itemsData.map((item: any) => ({ ...item, price: Number(item.price), stock_quantity: item.stock_quantity ?? 0, category_name: item.category_name ?? '', category_id: item.category_id ?? 0 })) as MenuItem[]);
+        setBookings(bookingsData as Booking[]);
+        setLoading(false);
+      })
+      .catch(() => {
+        setError('Failed to load menu items');
+        setLoading(false);
+      });
   }, []);
 
   function toggleItem(item: MenuItem) {

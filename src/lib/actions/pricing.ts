@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function getSeasonalPricing() {
@@ -28,8 +28,7 @@ export async function addSeasonalPricing(data: {
   price: number;
   cooking_space_price?: number;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
 
   const { room_type_id, season_name, start_date, end_date, price, cooking_space_price } = data;
 
@@ -55,8 +54,7 @@ export async function addSeasonalPricing(data: {
 }
 
 export async function deleteSeasonalPricing(id: number) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
 
   await prisma.seasonal_pricing.delete({ where: { id } });
   revalidatePath('/pricing/seasonal');
@@ -108,8 +106,7 @@ export async function createDiscount(data: {
   valid_until: string;
   status: string;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
 
   const { code, description, discount_type, discount_value, min_amount, max_uses, applies_to, valid_from, valid_until, status } = data;
 
@@ -139,8 +136,7 @@ export async function createDiscount(data: {
 }
 
 export async function deleteDiscount(id: number) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
 
   await prisma.discounts.delete({ where: { id } });
   revalidatePath('/pricing/discounts');

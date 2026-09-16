@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function getFinanceStats() {
@@ -59,8 +59,7 @@ export async function createExpense(data: {
   payment_method: string;
   transaction_date: string;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   const { category, description, notes, amount, payment_method, transaction_date } = data;
   if (!category) throw new Error('Category is required');
   if (!description) throw new Error('Description is required');
@@ -84,8 +83,7 @@ export async function createExpense(data: {
 }
 
 export async function deleteExpense(expenseId: number) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   await prisma.financial_transactions.deleteMany({ where: { id: expenseId, type: 'expense' } });
   revalidatePath('/finance/expenses');
   revalidatePath('/finance');
@@ -149,8 +147,7 @@ export async function createRefund(data: {
   reference_type: string;
   payment_method: string;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   const { amount, reason, reference_type, payment_method } = data;
   if (!amount || amount <= 0) throw new Error('Amount must be greater than 0');
   if (!reason) throw new Error('Reason is required');
@@ -205,8 +202,7 @@ export async function createUtilityBill(data: {
   due_date: string;
   notes: string;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   const { utility_type, provider, account_number, bill_month, amount, due_date, notes } = data;
   if (!utility_type) throw new Error('Utility type is required');
   if (!bill_month) throw new Error('Bill month is required');
@@ -244,8 +240,7 @@ export async function createUtilityBill(data: {
 }
 
 export async function markUtilityBillPaid(billId: number, receiptNumber: string) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   await prisma.utility_bills.update({
     where: { id: billId },
     data: { status: 'paid', paid_date: new Date(), receipt_number: receiptNumber || null },
@@ -306,114 +301,8 @@ export async function getUtilityStats() {
   };
 }
 
-export async function createWage(data: {
-  staff_id: number;
-  amount: number;
-  pay_date: string;
-  payment_method: string;
-  notes: string;
-}) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
-  const { staff_id, amount, pay_date, payment_method, notes } = data;
-  if (!staff_id) throw new Error('Staff member is required');
-  if (!amount || amount <= 0) throw new Error('Amount must be greater than 0');
-  if (!pay_date) throw new Error('Pay date is required');
-
-  await prisma.staff_wages.create({
-    data: {
-      staff_id,
-      amount,
-      pay_date: new Date(pay_date),
-      payment_method: payment_method || 'cash',
-      notes: notes || null,
-      created_by: user.id,
-    },
-  });
-
-  const staff = await prisma.staff.findUnique({ where: { id: staff_id } });
-  const staffName = staff?.full_name ?? 'Staff';
-  const dbMethod = payment_method === 'momo' ? 'mobile_money' : payment_method === 'airtel_money' ? 'mobile_money' : payment_method === 'bank' ? 'bank_transfer' : 'cash';
-  const desc = `Wages - ${staffName}`;
-  await prisma.financial_transactions.create({
-    data: {
-      type: 'expense',
-      category: 'wages',
-      description: desc,
-      amount,
-      payment_method: dbMethod,
-      transaction_date: new Date(),
-      recorded_by: user.id,
-    },
-  });
-
-  revalidatePath('/finance/wages');
-  revalidatePath('/finance');
-  return { success: true };
-}
-
-export async function getWages(filters?: { month?: string; method?: string }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
-  const month = filters?.month || new Date().toISOString().slice(0, 7);
-  const monthStart = new Date(`${month}-01`);
-  const monthEnd = new Date(monthStart);
-  monthEnd.setMonth(monthEnd.getMonth() + 1);
-
-  const where: any = { pay_date: { gte: monthStart, lt: monthEnd } };
-  if (filters?.method) where.payment_method = filters.method;
-
-  const result = await prisma.staff_wages.findMany({
-    where,
-    include: { staff: true },
-    orderBy: { pay_date: 'desc' },
-  });
-  return result.map(r => ({
-    ...r,
-    full_name: r.staff?.full_name,
-    position: r.staff?.position,
-  })) as Array<Record<string, unknown>>;
-}
-
-export async function getWageStats(month: string) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
-
-  const monthStart = new Date(`${month}-01`);
-  const monthEnd = new Date(monthStart);
-  monthEnd.setMonth(monthEnd.getMonth() + 1);
-
-  const [totalPaidResult, staffCountResult, methodStatsResult] = await Promise.all([
-    prisma.staff_wages.aggregate({
-      _sum: { amount: true },
-      where: { pay_date: { gte: monthStart, lt: monthEnd } },
-    }),
-    prisma.staff_wages.groupBy({
-      by: ['staff_id'],
-      where: { pay_date: { gte: monthStart, lt: monthEnd } },
-    }),
-    prisma.staff_wages.groupBy({
-      by: ['payment_method'],
-      where: { pay_date: { gte: monthStart, lt: monthEnd } },
-      _count: { id: true },
-      _sum: { amount: true },
-    }),
-  ]);
-
-  return {
-    totalPaid: Number(totalPaidResult._sum.amount) || 0,
-    staffCount: staffCountResult.length,
-    methodStats: methodStatsResult.map(m => ({
-      payment_method: m.payment_method,
-      count: m._count.id,
-      total: Number(m._sum.amount) || 0,
-    })),
-  };
-}
-
 export async function createExpenseCategory(data: { name: string; description: string }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   if (!data.name) throw new Error('Category name is required');
   await prisma.expense_categories.create({
     data: { name: data.name, description: data.description || null },
@@ -423,8 +312,7 @@ export async function createExpenseCategory(data: { name: string; description: s
 }
 
 export async function updateExpenseCategory(categoryId: number, data: { name: string; description: string; status: string }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   await prisma.expense_categories.update({
     where: { id: categoryId },
     data: { name: data.name, description: data.description || null, status: data.status || 'active' },
@@ -434,8 +322,7 @@ export async function updateExpenseCategory(categoryId: number, data: { name: st
 }
 
 export async function deleteExpenseCategory(categoryId: number) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   await prisma.expense_categories.delete({ where: { id: categoryId } });
   revalidatePath('/finance/expense-categories');
   return { success: true };

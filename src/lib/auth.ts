@@ -3,7 +3,9 @@ import { cookies } from 'next/headers';
 import prisma from '@/lib/db';
 
 function getSecret() {
-  return new TextEncoder().encode(process.env.JWT_SECRET || 'don_suites_secret_key_2026');
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET environment variable is not set');
+  return new TextEncoder().encode(secret);
 }
 
 export interface User {
@@ -40,6 +42,12 @@ export async function getSession(): Promise<User | null> {
 export async function requireAuth(): Promise<User> {
   const user = await getSession();
   if (!user) throw new Error('Unauthorized');
+  return user;
+}
+
+export async function requireRole(roles: string[]): Promise<User> {
+  const user = await requireAuth();
+  if (!roles.includes(user.role)) throw new Error('Insufficient permissions');
   return user;
 }
 

@@ -54,15 +54,24 @@ export default async function InventoryPage({
   const category = typeof params.category === 'string' ? Number(params.category) : undefined;
   const status = typeof params.status === 'string' ? params.status : '';
 
-  const [items, stats, categories] = await Promise.all([
-    getInventoryItems({
-      search: search || undefined,
-      category: category || undefined,
-      status: status || undefined,
-    }),
-    getInventoryStats(),
-    getInventoryCategories(),
-  ]);
+  let items: any[];
+  let stats;
+  let categories: any[];
+  try {
+    [items, stats, categories] = await Promise.all([
+      getInventoryItems({
+        search: search || undefined,
+        category: category || undefined,
+        status: status || undefined,
+      }),
+      getInventoryStats(),
+      getInventoryCategories(),
+    ]);
+  } catch {
+    items = [];
+    stats = { totalItems: 0, lowStockCount: 0, categoriesCount: 0, totalStock: 0 };
+    categories = [];
+  }
 
   return (
     <InventoryView

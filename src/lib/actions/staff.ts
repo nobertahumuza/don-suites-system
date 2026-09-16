@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function getUsers() {
@@ -13,8 +13,7 @@ export async function getUsers() {
 }
 
 export async function toggleUserStatus(userId: number) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   const current = await prisma.users.findUnique({
     where: { id: userId },
     select: { status: true },
@@ -30,9 +29,7 @@ export async function toggleUserStatus(userId: number) {
 }
 
 export async function resetUserPassword(userId: number, newPassword: string) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
-  if (user.role !== 'admin') throw new Error('Admin access required');
+  const user = await requireRole(['admin']);
   if (!newPassword || newPassword.length < 4) throw new Error('Password must be at least 4 characters');
   const bcrypt = await import('bcryptjs');
   const hashed = await bcrypt.hash(newPassword, 10);
@@ -98,8 +95,7 @@ export async function createStaff(data: {
   hire_date: string;
   status: string;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   const { full_name, gender, phone, email, position, department, contract_type, wage, hire_date, status } = data;
   if (!full_name) throw new Error('Full name is required');
   if (!position) throw new Error('Position is required');
@@ -133,8 +129,7 @@ export async function updateStaff(staffId: number, data: {
   hire_date: string;
   status: string;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   const { full_name, gender, phone, email, position, department, contract_type, wage, hire_date, status } = data;
   if (!full_name) throw new Error('Full name is required');
   if (!position) throw new Error('Position is required');
@@ -158,8 +153,7 @@ export async function updateStaff(staffId: number, data: {
 }
 
 export async function deleteStaff(staffId: number) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   await prisma.staff.delete({ where: { id: staffId } });
   revalidatePath('/staff');
   return { success: true };
@@ -200,8 +194,7 @@ export async function createShift(data: {
   break_minutes: number;
   notes: string;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   const { staff_id, shift_date, start_time, end_time, break_minutes, notes } = data;
   if (!staff_id) throw new Error('Staff member is required');
   if (!shift_date) throw new Error('Date is required');
@@ -223,8 +216,7 @@ export async function createShift(data: {
 }
 
 export async function updateShiftStatus(shiftId: number, status: string) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   const validStatuses = ['scheduled', 'completed', 'absent', 'leave'];
   if (!validStatuses.includes(status)) throw new Error('Invalid status');
   await prisma.staff_shifts.update({
@@ -284,8 +276,7 @@ export async function createLeave(data: {
   reason: string;
   notes: string;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   const { staff_id, leave_type, start_date, end_date, reason, notes } = data;
   if (!staff_id) throw new Error('Staff member is required');
   if (!leave_type) throw new Error('Leave type is required');
@@ -328,8 +319,7 @@ export async function createWage(data: {
   payment_method: string;
   notes: string;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin']);
   const { staff_id, amount, pay_date, payment_method, notes } = data;
   if (!staff_id) throw new Error('Staff member is required');
   if (!amount || amount <= 0) throw new Error('Amount must be greater than 0');

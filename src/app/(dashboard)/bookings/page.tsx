@@ -2,6 +2,7 @@ import prisma from '@/lib/db';
 import Link from 'next/link';
 import { cancelBooking } from '@/lib/actions/booking';
 import BookingActions from './booking-actions';
+import Pagination from '@/components/Pagination';
 
 const statusColors: Record<string, string> = {
   pending: '#f59e0b',
@@ -21,7 +22,7 @@ const statusBg: Record<string, string> = {
   completed: '#ecfdf5',
 };
 
-async function getBookings(filter: string) {
+async function getBookings(filter: string, page: number, limit: number) {
   const where =
     filter === 'cancelled'
       ? { status: 'cancelled' }
@@ -29,15 +30,22 @@ async function getBookings(filter: string) {
       ? {}
       : { status: { in: ['pending', 'confirmed', 'checked_in'] } };
 
-  return prisma.bookings.findMany({
-    where,
-    include: {
-      guests: true,
-      rooms: { include: { room_types: true } },
-    },
-    orderBy: { created_at: 'desc' },
-    take: 50,
-  });
+  const skip = (page - 1) * limit;
+  const [bookings, total] = await Promise.all([
+    prisma.bookings.findMany({
+      where,
+      include: {
+        guests: true,
+        rooms: { include: { room_types: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.bookings.count({ where }),
+  ]);
+
+  return { bookings, total, totalPages: Math.ceil(total / limit) };
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -56,13 +64,17 @@ function StatusBadge({ status }: { status: string }) {
 export default async function BookingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string }>;
+  searchParams: Promise<{ filter?: string; page?: string; limit?: string }>;
 }) {
   const params = await searchParams;
   const filter = params.filter || 'active';
-  const bookings = await getBookings(filter);
+  const page = Math.max(1, parseInt(params.page || '1', 10));
+  const limit = Math.min(100, Math.max(1, parseInt(params.limit || '20', 10)));
 
-  const tabs = [
+  try {
+    const { bookings, total, totalPages } = await getBookings(filter, page, limit);
+
+    const tabs = [
     { key: 'active', label: 'Active', color: '#0f1a3c' },
     { key: 'all', label: 'All', color: '#7c3aed' },
     { key: 'cancelled', label: 'Cancelled', color: '#dc2626' },
@@ -167,7 +179,24 @@ export default async function BookingsPage({
             </tbody>
           </table>
         </div>
+        <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+          <small className="text-xs text-gray-400">Page {page} of {totalPages} ({total} records)</small>
+          <Pagination currentPage={page} totalPages={totalPages} onPageChange={() => {}} />
+        </div>
       </div>
     </div>
   );
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Failed to load bookings';
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-10 text-center">
+        <i className="fas fa-exclamation-triangle text-4xl mb-3 block" style={{ color: '#ef4444', opacity: 0.3 }}></i>
+        <h5 className="text-gray-400 font-medium mb-3">Failed to load data</h5>
+        <p className="text-xs text-gray-400 mb-4">{errorMessage}</p>
+        <a href="/bookings" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: '#0f1a3c' }}>
+          <i className="fas fa-redo"></i> Try Again
+        </a>
+      </div>
+    );
+  }
 }

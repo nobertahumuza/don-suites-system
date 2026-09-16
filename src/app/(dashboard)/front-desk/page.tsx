@@ -73,14 +73,20 @@ export default function FrontDeskPage() {
       setFbOrders(o as any[]);
       setFbItems(i as any[]);
       setLoading(false);
+    }).catch(() => {
+      setLoading(false);
     });
   }, []);
 
   async function refreshData() {
-    const [s, v, o] = await Promise.all([getFrontDeskStats(), getActiveVisitors(), getRecentFbOrders(15)]);
-    setStats(s);
-    setVisitors(v as any[]);
-    setFbOrders(o as any[]);
+    try {
+      const [s, v, o] = await Promise.all([getFrontDeskStats(), getActiveVisitors(), getRecentFbOrders(15)]);
+      setStats(s);
+      setVisitors(v as any[]);
+      setFbOrders(o as any[]);
+    } catch {
+      // silently fail on refresh
+    }
   }
 
   function handleLogSubmit() {

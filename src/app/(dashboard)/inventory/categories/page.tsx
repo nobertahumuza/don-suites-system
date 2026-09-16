@@ -27,7 +27,12 @@ async function handleDeleteCategory(formData: FormData) {
 }
 
 export default async function CategoriesPage() {
-  const categories = await getInventoryCategories();
+  let categories: any[];
+  try {
+    categories = await getInventoryCategories();
+  } catch {
+    categories = [];
+  }
 
   return (
     <CategoriesView

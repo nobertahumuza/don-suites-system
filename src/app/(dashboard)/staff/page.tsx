@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getStaff, getStaffStats, createStaff, updateStaff, deleteStaff } from '@/lib/actions/staff';
+import Pagination from '@/components/Pagination';
 
 function formatCurrency(amount: number) {
   return 'UGX ' + Number(amount).toLocaleString();
@@ -19,19 +20,23 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+const PAGE_SIZE = 20;
+
 export default function StaffPage() {
-  const [staff, setStaff] = useState<Array<Record<string, unknown>>>([]);
+  const [allStaff, setAllStaff] = useState<Array<Record<string, unknown>>>([]);
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, totalWages: 0 });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<Record<string, unknown> | null>(null);
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState({
     full_name: '', gender: '', phone: '', email: '', position: '', department: '',
     contract_type: 'permanent', wage: '', hire_date: '', status: 'active'
   });
 
+  useEffect(() => { setPage(1); }, [statusFilter, search]);
   useEffect(() => { loadData(); }, [statusFilter, search]);
 
   async function loadData() {
@@ -41,11 +46,14 @@ export default function StaffPage() {
         getStaff({ status: statusFilter || undefined, search: search || undefined }),
         getStaffStats()
       ]);
-      setStaff(s);
+      setAllStaff(s);
       setStats(st);
     } catch (e) { console.error(e); }
     setLoading(false);
   }
+
+  const totalPages = Math.max(1, Math.ceil(allStaff.length / PAGE_SIZE));
+  const staff = allStaff.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   function openAdd() {
     setEditItem(null);
@@ -195,6 +203,10 @@ export default function StaffPage() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+          <small className="text-xs text-gray-400">Page {page} of {totalPages} ({allStaff.length} records)</small>
+          <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       </div>
 

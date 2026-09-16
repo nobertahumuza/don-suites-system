@@ -21,10 +21,17 @@ export default async function StockAdjustmentsPage({
   const params = await searchParams;
   const itemId = typeof params.item === 'string' ? Number(params.item) : undefined;
 
-  const [transactions, items] = await Promise.all([
-    getStockTransactions(itemId || undefined),
-    getInventoryItems(),
-  ]);
+  let transactions: any[];
+  let items: any[];
+  try {
+    [transactions, items] = await Promise.all([
+      getStockTransactions(itemId || undefined),
+      getInventoryItems(),
+    ]);
+  } catch {
+    transactions = [];
+    items = [];
+  }
 
   return (
     <AdjustmentsView

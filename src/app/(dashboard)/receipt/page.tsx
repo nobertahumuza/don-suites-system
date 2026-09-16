@@ -37,25 +37,29 @@ export default async function ReceiptPage({
   let items: any[] = [];
 
   if (type === 'fb') {
-    const order = await getFbOrderById(id);
-    if (!order) {
-      return <div className="p-10 text-center text-gray-500">Order not found</div>;
-    }
-    const orderItems = await getFbOrderItems(id);
+    try {
+      const order = await getFbOrderById(id);
+      if (!order) {
+        return <div className="p-10 text-center text-gray-500">Order not found</div>;
+      }
+      const orderItems = await getFbOrderItems(id);
 
-    orderLabel = `Order #${id}`;
-    const createdAt = order.created_at ? new Date(order.created_at as string | number | Date) : new Date();
-    date = createdAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    guestName = order.guest_name || 'Walk-in';
-    roomNumber = order.room_number || '';
-    orderType = (order.order_type || '').replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-    servedBy = order.served_by_name || 'N/A';
-    paymentStatus = order.payment_status || '';
-    subtotal = Number(order.subtotal);
-    surcharge = Number(order.room_service_surcharge);
-    total = Number(order.total);
-    status = order.status || '';
-    items = orderItems;
+      orderLabel = `Order #${id}`;
+      const createdAt = order.created_at ? new Date(order.created_at as string | number | Date) : new Date();
+      date = createdAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      guestName = order.guest_name || 'Walk-in';
+      roomNumber = order.room_number || '';
+      orderType = (order.order_type || '').replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+      servedBy = order.served_by_name || 'N/A';
+      paymentStatus = order.payment_status || '';
+      subtotal = Number(order.subtotal);
+      surcharge = Number(order.room_service_surcharge);
+      total = Number(order.total);
+      status = order.status || '';
+      items = orderItems;
+    } catch {
+      return <div className="p-10 text-center text-gray-500">Failed to load order</div>;
+    }
   } else {
     return <div className="p-10 text-center text-gray-500">Invalid receipt type</div>;
   }

@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function getIncidents() {
@@ -33,8 +33,7 @@ export async function createIncident(data: {
   description: string;
   reported_by: string;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin', 'security']);
 
   const { incident_type, severity, location, description, reported_by } = data;
 
@@ -58,8 +57,7 @@ export async function createIncident(data: {
 }
 
 export async function updateIncidentStatus(incidentId: number, newStatus: string) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin', 'security']);
 
   if (!['open', 'investigating', 'resolved', 'closed'].includes(newStatus)) throw new Error('Invalid status');
 

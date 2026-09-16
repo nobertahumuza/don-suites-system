@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Pagination from '@/components/Pagination';
 
 function ActionBadge({ action }: { action: string }) {
   const styles: Record<string, string> = {
@@ -210,14 +211,7 @@ export default function AuditPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <small className="text-xs text-gray-400">Page {page} of {totalPages} ({total} records)</small>
-          <div className="flex gap-1">
-            {page > 1 && (
-              <button onClick={() => setPage(page - 1)} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-500 hover:bg-gray-200">Prev</button>
-            )}
-            {page < totalPages && (
-              <button onClick={() => setPage(page + 1)} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-500 hover:bg-gray-200">Next</button>
-            )}
-          </div>
+          <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}
     </div>

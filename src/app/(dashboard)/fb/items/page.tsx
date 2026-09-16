@@ -47,14 +47,21 @@ export default async function FbItemsPage({
   const category = typeof params.category === 'string' ? Number(params.category) : undefined;
   const status = typeof params.status === 'string' ? params.status : '';
 
-  const [items, categories] = await Promise.all([
-    getAllFbItems({
-      search: search || undefined,
-      category: category || undefined,
-      status: status || undefined,
-    }),
-    getFbCategories(),
-  ]);
+  let items: any[] = [];
+  let categories: any[] = [];
+  try {
+    [items, categories] = await Promise.all([
+      getAllFbItems({
+        search: search || undefined,
+        category: category || undefined,
+        status: status || undefined,
+      }),
+      getFbCategories(),
+    ]);
+  } catch {
+    items = [];
+    categories = [];
+  }
 
   return (
     <FbItemsView

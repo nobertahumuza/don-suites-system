@@ -2,21 +2,26 @@
 
 import { useState, useEffect } from 'react';
 import { createExpense, deleteExpense, getExpenses, getExpenseStats, getExpenseCategories } from '@/lib/actions/finance';
+import Pagination from '@/components/Pagination';
 
 function formatCurrency(amount: number) {
   return 'UGX ' + Number(amount).toLocaleString();
 }
 
+const PAGE_SIZE = 20;
+
 export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Array<Record<string, unknown>>>([]);
+  const [allExpenses, setAllExpenses] = useState<Array<Record<string, unknown>>>([]);
   const [categories, setCategories] = useState<Array<Record<string, unknown>>>([]);
   const [stats, setStats] = useState({ totalExpenses: 0, monthExpenses: 0, todayExpenses: 0, todayCount: 0 });
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState({ category: '', description: '', notes: '', amount: '', payment_method: 'cash', transaction_date: new Date().toISOString().split('T')[0] });
 
+  useEffect(() => { setPage(1); }, [dateFrom, dateTo, categoryFilter]);
   useEffect(() => { loadData(); }, [dateFrom, dateTo, categoryFilter]);
 
   async function loadData() {
@@ -27,12 +32,15 @@ export default function ExpensesPage() {
         getExpenseStats(),
         getExpenseCategories()
       ]);
-      setExpenses(e);
+      setAllExpenses(e);
       setStats(s);
       setCategories(c);
     } catch (err) { console.error(err); }
     setLoading(false);
   }
+
+  const totalPages = Math.max(1, Math.ceil(allExpenses.length / PAGE_SIZE));
+  const expenses = allExpenses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -193,6 +201,10 @@ export default function ExpensesPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+              <small className="text-xs text-gray-400">Page {page} of {totalPages} ({allExpenses.length} records)</small>
+              <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
             </div>
           </div>
         </div>

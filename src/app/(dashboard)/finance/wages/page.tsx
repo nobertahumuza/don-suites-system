@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createWage, getWages, getWageStats } from '@/lib/actions/finance';
+import { createWage, getWages, getWageStats } from '@/lib/actions/staff';
 import { getActiveStaffList } from '@/lib/actions/staff';
 
 function formatCurrency(amount: number) {

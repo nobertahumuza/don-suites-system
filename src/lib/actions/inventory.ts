@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function getInventoryItems(filters?: {
@@ -86,8 +86,7 @@ export async function createInventoryItem(data: {
   unit?: string;
   reorderLevel: number;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin', 'storekeeper']);
 
   const result = await prisma.inventory_items.create({
     data: {
@@ -116,8 +115,7 @@ export async function updateInventoryItem(
     status: string;
   }
 ) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin', 'storekeeper']);
 
   await prisma.inventory_items.updateMany({
     where: { id },
@@ -136,8 +134,7 @@ export async function updateInventoryItem(
 }
 
 export async function deleteInventoryItem(id: number) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin', 'storekeeper']);
 
   await prisma.inventory_items.updateMany({
     where: { id },
@@ -156,8 +153,7 @@ export async function adjustStock(
     notes?: string;
   }
 ) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin', 'storekeeper']);
 
   const item = await prisma.inventory_items.findUnique({ where: { id } });
   if (!item) throw new Error('Item not found');
@@ -222,8 +218,7 @@ export async function createCategory(data: {
   name: string;
   description?: string;
 }) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin', 'storekeeper']);
 
   const result = await prisma.inventory_categories.create({
     data: {
@@ -245,8 +240,7 @@ export async function updateCategory(
     description?: string;
   }
 ) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin', 'storekeeper']);
 
   await prisma.inventory_categories.updateMany({
     where: { id },
@@ -262,8 +256,7 @@ export async function updateCategory(
 }
 
 export async function deleteCategory(id: number) {
-  const user = await getSession();
-  if (!user) throw new Error('Unauthorized');
+  const user = await requireRole(['admin', 'storekeeper']);
 
   await prisma.inventory_items.updateMany({
     where: { category_id: id },

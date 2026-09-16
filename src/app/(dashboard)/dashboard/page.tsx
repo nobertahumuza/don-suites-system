@@ -1,7 +1,13 @@
 import prisma from "@/lib/db";
 import TopBar from "@/components/TopBar";
+import DashboardView from "./dashboard-view";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ start?: string; end?: string }>;
+}) {
+  const params = await searchParams;
   let totalRooms = 0;
   let availableRooms = 0;
   let occupiedRooms = 0;
@@ -25,6 +31,12 @@ export default async function DashboardPage() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+
+    const filterStart = params.start ? new Date(params.start) : today;
+    const filterEnd = params.end ? new Date(params.end) : tomorrow;
+    if (!params.end) {
+      filterEnd.setDate(filterStart.getDate() + 1);
+    }
 
     const [
       totalRoomsR,
@@ -60,7 +72,7 @@ export default async function DashboardPage() {
       }),
       prisma.financial_transactions.aggregate({
         _sum: { amount: true },
-        where: { type: 'income', transaction_date: { gte: today, lt: tomorrow } },
+        where: { type: 'income', transaction_date: { gte: filterStart, lt: filterEnd } },
       }),
       prisma.financial_transactions.aggregate({
         _sum: { amount: true },
@@ -104,7 +116,7 @@ export default async function DashboardPage() {
     try {
       todayFbOrders = await prisma.fb_orders.count({
         where: {
-          created_at: { gte: today, lt: tomorrow },
+          created_at: { gte: filterStart, lt: filterEnd },
         },
       });
     } catch {
@@ -128,101 +140,30 @@ export default async function DashboardPage() {
 
   const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
 
-  const formatCurrency = (v: number) => {
-    if (v >= 1000000) return `UGX ${(v / 1000000).toFixed(1)}M`;
-    if (v >= 1000) return `UGX ${(v / 1000).toFixed(0)}K`;
-    return `UGX ${v.toLocaleString()}`;
-  };
-
   return (
     <>
       <TopBar title="Dashboard" icon="fas fa-tachometer-alt" />
 
       <div className="py-7 px-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <StatCard
-            icon="fas fa-bed"
-            value={totalRooms}
-            label="Total Rooms"
-            sub={`${availableRooms} available`}
-            color="blue"
-          />
-          <StatCard
-            icon="fas fa-check-circle"
-            value={occupiedRooms}
-            label="Occupied Rooms"
-            sub={`${occupancyRate}% occupancy`}
-            color="green"
-          />
-          <StatCard
-            icon="fas fa-calendar-check"
-            value={activeBookings}
-            label="Active Bookings"
-            sub={`${todayCheckins} check-ins today`}
-            color="orange"
-          />
-          <StatCard
-            icon="fas fa-money-bill-wave"
-            value={formatCurrency(todayRevenue)}
-            label="Today's Revenue"
-            sub={`Month: ${formatCurrency(monthRevenue)}`}
-            color="purple"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <StatCard
-            icon="fas fa-sign-out-alt"
-            value={todayCheckouts}
-            label="Today's Check-outs"
-            color="red"
-          />
-          <StatCard
-            icon="fas fa-box"
-            value={lowStock}
-            label="Low Stock Items"
-            color="teal"
-          />
-          <StatCard
-            icon="fas fa-broom"
-            value={cleaningRooms}
-            label="Being Cleaned"
-            color="blue"
-          />
-          <StatCard
-            icon="fas fa-ban"
-            value={outOfServiceRooms}
-            label="Out of Service"
-            color="purple"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <StatCard
-            icon="fas fa-users"
-            value={activeGuests}
-            label="Active Guests"
-            color="green"
-          />
-          <StatCard
-            icon="fas fa-clock"
-            value={pendingPayments}
-            label="Pending Payments"
-            color="orange"
-          />
-          <StatCard
-            icon="fas fa-receipt"
-            value={todayFbOrders}
-            label="Today's F&B Orders"
-            color="teal"
-          />
-          <StatCard
-            icon="fas fa-exclamation-triangle"
-            value={openIncidents}
-            label="Open Incidents"
-            color="red"
-          />
-        </div>
+        <DashboardView
+          stats={{
+            totalRooms,
+            availableRooms,
+            occupiedRooms,
+            cleaningRooms,
+            outOfServiceRooms,
+            todayCheckins,
+            todayCheckouts,
+            todayRevenue,
+            monthRevenue,
+            activeBookings,
+            lowStock,
+            activeGuests,
+            pendingPayments,
+            todayFbOrders,
+            openIncidents,
+          }}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-2xl p-6 shadow-md border border-[var(--border)]">

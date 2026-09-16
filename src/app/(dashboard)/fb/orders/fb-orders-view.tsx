@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { exportReportToCSV } from '@/lib/actions/export';
 
 function formatCurrency(amount: number | { toNumber: () => number } | null | undefined) {
   return 'UGX ' + Number(amount ?? 0).toLocaleString();
@@ -100,6 +101,20 @@ export default function FbOrdersView({
     if (!confirm('Mark as paid?')) e.preventDefault();
   }
 
+  function handleExportOrders() {
+    const data = orders.map((o) => ({
+      'Order ID': o.id,
+      Type: o.order_type,
+      Guest: o.guest_name || 'Walk-in',
+      Room: o.room_number || '',
+      Total: Number(o.total),
+      Payment: o.payment_status,
+      Status: o.status,
+      Date: new Date(o.created_at as string).toLocaleDateString(),
+    }));
+    exportReportToCSV(data, 'fb_orders');
+  }
+
   return (
     <div className="p-4 md:p-6">
       <div className="rounded-2xl p-5 md:p-6 mb-6" style={{ background: 'linear-gradient(135deg, #080e22, #0f1a3c, #1a2d5a)' }}>
@@ -112,6 +127,12 @@ export default function FbOrdersView({
             <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.6)' }}>Manage food & beverage orders</p>
           </div>
           <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={handleExportOrders}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white/70 border border-white/20 hover:bg-white/10"
+            >
+              <i className="fas fa-download"></i> Export CSV
+            </button>
             <Link href="/fb/orders/new" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
               <i className="fas fa-plus"></i> New Order
             </Link>
